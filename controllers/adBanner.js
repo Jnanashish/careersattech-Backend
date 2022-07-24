@@ -18,7 +18,7 @@ exports.getAds = (req, res) => {
     adbanner.find().sort({_id:-1})
     .exec((err, result) => {
         if(err){
-            return res.status(500).json({
+            return res.status(500).json({   
                error : err.message
             })           
         }

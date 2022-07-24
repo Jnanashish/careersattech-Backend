@@ -1,9 +1,8 @@
 // import the models
 const jd = require("../model/JdSchema");
-
 require("dotenv").config();
 
-// to store image files
+// to store image files cloudinary config
 const cloudinary = require('cloudinary').v2;
 cloudinary.config({ 
   cloud_name: process.env.CLOUD_NAME, 
@@ -12,33 +11,42 @@ cloudinary.config({
   secure: true
 });
 
+const cloudinary2 = require('cloudinary').v2;
+cloudinary2.config({ 
+  cloud_name: process.env.CLOUD_NAME2, 
+  api_key: process.env.API_KEY2, 
+  api_secret: process.env.API_SECRET2,
+  secure: true
+});
 
-// Get all the jobs
+// get all the jobs with mandatory page and size
 exports.getJobs = (req, res) =>{
     const {page, size} = req.query;
     const limit = parseInt(size);
     const skip = (parseInt(page) - 1) * parseInt(size);
 
-   jd.find().sort({_id:-1}).limit(limit).skip(skip)
-   .exec((err, result) => {
+    jd.find().sort({_id:-1}).limit(limit).skip(skip)
+    .exec((err, result) => {
         if(err){
             return res.status(500).json({
                 error : err.message
             })           
         }
         var data = {
+            // return only some required fields
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt} = value
+                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt 
+                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
                 }
             })
         };
         return res.status(200).send(data);
-   })
+    })
 }
 
 
+// get all jobs along with all details no limit
 exports.getAllJobs = (req, res) => {
     jd.find().sort({_id:-1})
     .exec((err, result) => {
@@ -52,6 +60,7 @@ exports.getAllJobs = (req, res) => {
 }
 
 
+// get job desc with name of the company
 exports.getJdcompanyname = (req, res) =>{
     const {companyname} = req.query;
 
@@ -67,9 +76,9 @@ exports.getJdcompanyname = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt} = value
+                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt
+                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience                  
                 }
             })
         };
@@ -77,7 +86,7 @@ exports.getJdcompanyname = (req, res) =>{
    })
 }
 
-
+// get job desc with name of batch
 exports.getJobsBatch = (req, res) =>{
     const {year} = req.query;
 
@@ -96,9 +105,9 @@ exports.getJobsBatch = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt} = value
+                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt
+                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
                 }
             })
         };
@@ -107,6 +116,7 @@ exports.getJobsBatch = (req, res) =>{
 }
 
 
+// get job desc with degree
 exports.getJobsDegree = (req, res) =>{
     const {degree} = req.query;
 
@@ -124,9 +134,9 @@ exports.getJobsDegree = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt} = value
+                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt
+                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
                 }
             })
         };
@@ -135,6 +145,7 @@ exports.getJobsDegree = (req, res) =>{
 }
 
 
+// get jobs with type (intern, full time)
 exports.getJobsType = (req, res) =>{
     const {jobtype} = req.query;
 
@@ -151,15 +162,16 @@ exports.getJobsType = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt} = value
+                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt
+                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
                 }
             })
         };
         return res.status(200).send(data);
    })
 }
+
 
 // get a job based on id
 exports.getJobById = (req, res) => {
@@ -171,8 +183,9 @@ exports.getJobById = (req, res) => {
             })           
         }
         return res.status(200).send(result);
-   })
+    })
 }
+
 
 // delete job based on id
 exports.deleteJobById = (req, res) => {
@@ -210,6 +223,7 @@ exports.updateJob = (req, res) => {
    })
 }
 
+
 exports.updateClick = (req, res) => {
     jd.findByIdAndUpdate({ _id: req.params.id},{
         $inc: {"totalclick": 1}          
@@ -227,11 +241,30 @@ exports.updateClick = (req, res) => {
     })    
 }
 
+
+// return cloudinary image link
+exports.getPosterLink = (req, res) => {
+    const file = req.files.photo;
+    cloudinary2.uploader.upload(file.tempFilePath, (err, result) => {
+            if(err){
+                return res.status(500).json({
+                    error : err.message
+                })           
+            } 
+            return res.status(201).json({
+                url : result.secure_url
+            })          
+    })
+}
+
+
+
+
 exports.addJobs = (req, res) => {
-    const {title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany} = req.body;
+    const {title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner} = req.body;
 
     if(!req.files){
-        const data = new jd({title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany})
+        const data = new jd({title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner})
         data.save((err, result) => {
             if(err){
                 return res.status(500).json({

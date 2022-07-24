@@ -64,6 +64,9 @@ const jdSchema = new mongoose.Schema({
     role:{
         type : String,
     },
+    jdbanner:{
+        type : String,
+    },
 },{ timestamps: true })
 
 const jd = mongoose.model('Jobdesc', jdSchema);

@@ -3,7 +3,7 @@ const router = express.Router();
 const cors = require("cors");
 
 // import methods from controllers
-const {getJobs, getJobsBatch, getJobsDegree, getJobsType, getJobById, deleteJobById, updateJob, updateClick, addJobs, getAllJobs, getJdcompanyname} = require("../controllers/jobDesc")
+const {getJobs, getJobsBatch, getJobsDegree, getJobsType, getJobById, deleteJobById, updateJob, updateClick, addJobs, getAllJobs, getJdcompanyname, getPosterLink} = require("../controllers/jobDesc")
 
 //allow cors
 router.use(cors({
@@ -35,5 +35,8 @@ router.patch("/jd/update/count/:id", updateClick);
 
 // update the totalclick once every time api called
 router.post("/jd/add", addJobs);
+
+router.post("/jd/getposterlink", getPosterLink);
+
 
 module.exports = router;
