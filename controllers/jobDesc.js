@@ -278,7 +278,7 @@ exports.addJobs = (req, res) => {
     } else {
         const file = req.files.photo;
         cloudinary.uploader.upload(file.tempFilePath, (err, result) => {
-            const data = new jd({title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, imagePath: result.secure_url})
+            const data = new jd({title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner, companyName, imagePath: result.secure_url})
             data.save((err, result) => {
                 if(err){
                     return res.status(500).json({
