@@ -67,6 +67,9 @@ const jdSchema = new mongoose.Schema({
     jdbanner:{
         type : String,
     },
+    companyName:{
+        type : String,
+    },
 },{ timestamps: true })
 
 const jd = mongoose.model('Jobdesc', jdSchema);

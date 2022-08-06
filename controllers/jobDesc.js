@@ -259,12 +259,12 @@ exports.getPosterLink = (req, res) => {
 
 
 
-
+// add new job data
 exports.addJobs = (req, res) => {
-    const {title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner} = req.body;
+    const {title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner, companyName} = req.body;
 
     if(!req.files){
-        const data = new jd({title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner})
+        const data = new jd({title, link, jdpage, salary, batch, degree, jobdesc, eligibility, experience, lastdate, skills, role, location, responsibility, jobtype, companytype, aboutCompany, jdbanner, companyName})
         data.save((err, result) => {
             if(err){
                 return res.status(500).json({
