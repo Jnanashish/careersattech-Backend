@@ -36,6 +36,7 @@ router.patch("/jd/update/count/:id", updateClick);
 // update the totalclick once every time api called
 router.post("/jd/add", addJobs);
 
+// get link of particular job poster
 router.post("/jd/getposterlink", getPosterLink);
 
 

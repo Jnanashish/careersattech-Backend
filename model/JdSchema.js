@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+// schema for job description
 const jdSchema = new mongoose.Schema({
     title:{
         type : String,
@@ -40,18 +41,19 @@ const jdSchema = new mongoose.Schema({
     responsibility:{
         type : String,
     },
+    // fulltime or intern role
     jobtype:{
         type : String,
     },
-    imagePath:{
+    imagePath:{      // logo image path
         type : String,
         default : 'none',
     },
-    companytype:{
+    companytype:{      // type of company (service / product / startup)
         type : String,
     },
     totalclick:{
-        type : Number,
+        type : Number,   //total no of apply clicked
         default: 0,
     },
     adclick:{
@@ -59,13 +61,13 @@ const jdSchema = new mongoose.Schema({
         default: 0,
     },
     aboutCompany:{
-        type : String,
+        type : String,   
     },
     role:{
         type : String,
     },
     jdbanner:{
-        type : String,
+        type : String,   // banner of the job post
     },
     companyName:{
         type : String,
@@ -73,5 +75,6 @@ const jdSchema = new mongoose.Schema({
 },{ timestamps: true })
 
 const jd = mongoose.model('Jobdesc', jdSchema);
+
 
 module.exports = jd;
