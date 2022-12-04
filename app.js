@@ -30,10 +30,10 @@ app.use("/api", adLink);
 app.use("/api", adBanner);
 app.use("/api", showAdPop);
 
-// step for heroku environment
-if (process.env.NODE_ENV == "production") {
-    app.use(express.static("frontend/build"));
-}
+// // step for heroku environment
+// if (process.env.NODE_ENV == "production") {
+//     app.use(express.static("frontend/build"));
+// }
 
 // conection to port by default 5000
 const PORT = process.env.PORT || 5000;

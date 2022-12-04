@@ -9,6 +9,7 @@
   },
   "author": "",
   "license": "ISC",
+  "type": "module",
   "dependencies": {
     "cloudinary": "^1.26.3",
     "cors": "^2.8.5",
