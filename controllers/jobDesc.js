@@ -35,10 +35,34 @@ exports.getJobs = (req, res) =>{
         var data = {
             // return only some required fields
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
+                const {
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                } = value;
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
-                }
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                };
             })
         };
         return res.status(200).send(data);
@@ -76,10 +100,34 @@ exports.getJdcompanyname = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
+                const {
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                } = value;
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience                  
-                }
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                };
             })
         };
         return res.status(200).send(data);
@@ -105,10 +153,34 @@ exports.getJobsBatch = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
+                const {
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                } = value;
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
-                }
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                };
             })
         };
         return res.status(200).send(data);
@@ -134,10 +206,34 @@ exports.getJobsDegree = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
+                const {
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                } = value;
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
-                }
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                };
             })
         };
         return res.status(200).send(data);
@@ -162,10 +258,34 @@ exports.getJobsType = (req, res) =>{
         }
         var data = {
             'data': result.map((value) => {
-                const {id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience} = value
+                const {
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                } = value;
                 return {
-                    id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience
-                }
+                    id,
+                    title,
+                    link,
+                    batch,
+                    degree,
+                    jobtype,
+                    imagePath,
+                    jdpage,
+                    createdAt,
+                    location,
+                    experience,
+                    totalclick,
+                };
             })
         };
         return res.status(200).send(data);
