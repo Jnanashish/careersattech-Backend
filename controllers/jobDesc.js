@@ -53,6 +53,7 @@ exports.getJobs = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     } = value;
                     return {
                         id,
@@ -69,6 +70,7 @@ exports.getJobs = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     };
                 }),
             };
@@ -119,6 +121,7 @@ exports.getJdcompanyname = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     } = value;
                     return {
                         id,
@@ -135,6 +138,7 @@ exports.getJdcompanyname = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     };
                 }),
             };
@@ -178,6 +182,7 @@ exports.getJobsBatch = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     } = value;
                     return {
                         id,
@@ -194,6 +199,7 @@ exports.getJobsBatch = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     };
                 }),
             };
@@ -236,6 +242,7 @@ exports.getJobsDegree = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     } = value;
                     return {
                         id,
@@ -252,6 +259,7 @@ exports.getJobsDegree = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     };
                 }),
             };
@@ -293,6 +301,7 @@ exports.getJobsType = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     } = value;
                     return {
                         id,
@@ -309,6 +318,7 @@ exports.getJobsType = (req, res) => {
                         totalclick,
                         companytype,
                         role,
+                        companyName,
                     };
                 }),
             };
