@@ -467,6 +467,7 @@ exports.addJobs = (req, res) => {
         aboutCompany,
         jdbanner,
         companyName,
+        imagePath,
     } = req.body;
 
     if (!req.files) {
@@ -490,6 +491,7 @@ exports.addJobs = (req, res) => {
             aboutCompany,
             jdbanner,
             companyName,
+            imagePath
         });
         data.save((err, result) => {
             if (err) {
