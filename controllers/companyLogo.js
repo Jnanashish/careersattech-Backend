@@ -1,9 +1,9 @@
 const companyLogo = require("../model/CompanyLogoSchema")
 
 exports.getCompanyLogo = (req, res) => {
-    const { companyname } = req.query;
+    const { companyName } = req.query;
 
-    companyLogo.find({ $or: [{ title: { $regex: companyname, $options: "i" } }] })
+    companyLogo.find({ $or: [{ companyName: { $regex: companyName, $options: "i" } }] })
     .sort({ _id: -1 })
     .exec((err, result) => {
         if (err) {
