@@ -92,11 +92,10 @@ exports.getAllJobs = (req, res) => {
         });
 };
 
-// get job desc with name of the company
+// get job details with name of the company as query
 exports.getJdcompanyname = (req, res) => {
-    const { companyname } = req.query;
-
-    jd.find({ $or: [{ title: { $regex: companyname, $options: "i" } }] })
+    const {companyname}  = req.query;
+    jd.find({ companyName: { $regex: companyname, $options: "i" }})
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
@@ -146,13 +145,14 @@ exports.getJdcompanyname = (req, res) => {
         });
 };
 
-// get job desc with name of batch
+// get job desc with batch
 exports.getJobsBatch = (req, res) => {
-    const { year } = req.query;
+    const { batch, year } = req.query;
+    const searchedYear = batch || year;
 
     jd.find({
         $or: [
-            { batch: { $regex: year, $options: "i" } },
+            { batch: { $regex: searchedYear, $options: "i" } },
             { batch: { $regex: "any", $options: "i" } },
             { batch: { $regex: "N/A", $options: "i" } },
             { batch: { $regex: "N", $options: "i" } },
@@ -211,13 +211,7 @@ exports.getJobsBatch = (req, res) => {
 exports.getJobsDegree = (req, res) => {
     const { degree } = req.query;
 
-    jd.find({
-        $or: [
-            { degree: { $regex: degree, $options: "i" } },
-            { degree: { $regex: "N", $options: "i" } },
-            { degree: { $regex: "any", $options: "i" } },
-        ],
-    })
+    jd.find({ degree: { $regex: degree, $options: "i" }})
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
@@ -271,12 +265,7 @@ exports.getJobsDegree = (req, res) => {
 exports.getJobsType = (req, res) => {
     const { jobtype } = req.query;
 
-    jd.find({
-        $or: [
-            { jobtype: { $regex: jobtype, $options: "i" } },
-            { jobtype: { $regex: "N", $options: "i" } },
-        ],
-    })
+    jd.find({ jobtype: { $regex: jobtype, $options: "i" }})
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
