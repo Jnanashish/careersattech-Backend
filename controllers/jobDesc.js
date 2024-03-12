@@ -1,7 +1,7 @@
 // import the models
 const jd = require("../model/JdSchema");
 require("dotenv").config();
-
+const { apiErrorHandler, jobDetailsHandler } = require("../Helpers/controllerHelper");
 // to store image files cloudinary config
 const cloudinary = require("cloudinary").v2;
 cloudinary.config({
@@ -31,50 +31,9 @@ exports.getJobs = (req, res) => {
         .skip(skip)
         .exec((err, result) => {
             if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
+                return apiErrorHandler(err, res);
             }
-            var data = {
-                // return only some required fields
-                data: result.map((value) => {
-                    const {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    } = value;
-                    return {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    };
-                }),
-            };
-            return res.status(200).send(data);
+            return jobDetailsHandler(result, res);
         });
 };
 
@@ -84,9 +43,7 @@ exports.getAllJobs = (req, res) => {
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
+                return apiErrorHandler(err, res);
             }
             return res.status(200).send(result);
         });
@@ -99,49 +56,9 @@ exports.getJdcompanyname = (req, res) => {
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
+                return apiErrorHandler(err, res);
             }
-            var data = {
-                data: result.map((value) => {
-                    const {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    } = value;
-                    return {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    };
-                }),
-            };
-            return res.status(200).send(data);
+            return jobDetailsHandler(result, res);
         });
 };
 
@@ -161,49 +78,9 @@ exports.getJobsBatch = (req, res) => {
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
+                return apiErrorHandler(err, res);
             }
-            var data = {
-                data: result.map((value) => {
-                    const {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    } = value;
-                    return {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    };
-                }),
-            };
-            return res.status(200).send(data);
+            return jobDetailsHandler(result, res);
         });
 };
 
@@ -215,49 +92,9 @@ exports.getJobsDegree = (req, res) => {
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
+                return apiErrorHandler(err, res);
             }
-            var data = {
-                data: result.map((value) => {
-                    const {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    } = value;
-                    return {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    };
-                }),
-            };
-            return res.status(200).send(data);
+            return jobDetailsHandler(result, res);
         });
 };
 
@@ -269,49 +106,9 @@ exports.getJobsType = (req, res) => {
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
+                return apiErrorHandler(err, res);
             }
-            var data = {
-                data: result.map((value) => {
-                    const {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    } = value;
-                    return {
-                        id,
-                        title,
-                        link,
-                        batch,
-                        degree,
-                        jobtype,
-                        imagePath,
-                        jdpage,
-                        createdAt,
-                        location,
-                        experience,
-                        totalclick,
-                        companytype,
-                        role,
-                        companyName,
-                    };
-                }),
-            };
-            return res.status(200).send(data);
+            return jobDetailsHandler(result, res);
         });
 };
 
@@ -319,21 +116,45 @@ exports.getJobsType = (req, res) => {
 exports.getJobById = (req, res) => {
     jd.findOne({ _id: req.params.id }).exec((err, result) => {
         if (err) {
-            return res.status(500).json({
-                error: err.message,
-            });
+            return apiErrorHandler(err, res);
         }
         return res.status(200).send(result);
     });
+};
+
+// get jobs based on user query
+exports.getJobsQuery = (req, res) => {
+    const { query } = req.query;
+
+    jd.find({ title: { $regex: query, $options: "i" }})
+        .sort({ _id: -1 })
+        .exec((err, result) => {
+            if (err) {
+                return apiErrorHandler(err, res);
+            }
+            return jobDetailsHandler(result, res);
+        });
+};
+
+// get jobs based on location
+exports.getJobsLocation = (req, res) => {
+    const { location } = req.query;
+
+    jd.find({ location: { $regex: location, $options: "i" }})
+        .sort({ _id: -1 })
+        .exec((err, result) => {
+            if (err) {
+                return apiErrorHandler(err, res);
+            }
+            return jobDetailsHandler(result, res);
+        });
 };
 
 // delete job based on id
 exports.deleteJobById = (req, res) => {
     jd.deleteOne({ _id: req.params.id }).exec((err, result) => {
         if (err) {
-            return res.status(500).json({
-                error: err.message,
-            });
+            return apiErrorHandler(err, res);
         }
         return res.status(200).json({
             message: "Deleted Successfully",

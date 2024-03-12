@@ -3,7 +3,7 @@ const router = express.Router();
 const cors = require("cors");
 
 // import methods from controllers
-const {getJobs, getJobsBatch, getJobsDegree, getJobsType, getJobById, deleteJobById, updateJob, updateClick, addJobs, getAllJobs, getJdcompanyname, getPosterLink} = require("../controllers/jobDesc")
+const {getJobs, getJobsBatch, getJobsDegree, getJobsType, getJobById, deleteJobById, updateJob, updateClick, addJobs, getAllJobs, getJdcompanyname, getPosterLink, getJobsQuery, getJobsLocation} = require("../controllers/jobDesc")
 
 //allow cors
 router.use(cors({
@@ -20,6 +20,8 @@ router.get("/jd/get/batch", getJobsBatch);
 router.get("/jd/get/degree", getJobsDegree);
 router.get("/jd/get/jobtype", getJobsType);
 router.get("/jd/get/companyname", getJdcompanyname);
+router.get("/jd/get/query", getJobsQuery);
+router.get("/jd/get/location", getJobsLocation);
 
 // get job based on id
 router.get("/jd/get/:id", getJobById);
