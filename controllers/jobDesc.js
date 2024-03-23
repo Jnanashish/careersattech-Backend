@@ -1,7 +1,8 @@
 // import the models
-const jd = require("../model/JdSchema");
+const jd = require("../model/JobdetailsSchema");
 require("dotenv").config();
 const { apiErrorHandler, jobDetailsHandler } = require("../Helpers/controllerHelper");
+
 // to store image files cloudinary config
 const cloudinary = require("cloudinary").v2;
 cloudinary.config({
@@ -11,148 +12,77 @@ cloudinary.config({
     secure: true,
 });
 
-const cloudinary2 = require("cloudinary").v2;
-cloudinary2.config({
-    cloud_name: process.env.CLOUD_NAME2,
-    api_key: process.env.API_KEY2,
-    api_secret: process.env.API_SECRET2,
-    secure: true,
-});
-
-// get all the jobs with mandatory page and size
+// get job details based on various query parameters
 exports.getJobs = (req, res) => {
-    const { page, size } = req.query;
-    const limit = parseInt(size);
-    const skip = (parseInt(page) - 1) * parseInt(size);
+    // get all the query params
+    const { page, size, companyname, batch, degree, jobtype, query, location, id } = req.query;
 
-    jd.find()
-        .sort({ _id: -1 })
-        .limit(limit)
-        .skip(skip)
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
+    let conditions = {};
+    let options = {};
 
-// get all jobs along with all details no limit
-exports.getAllJobs = (req, res) => {
-    jd.find()
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return res.status(200).send(result);
-        });
-};
+    // check if id is present and return job details for it
+    if (!!id) {
+        jd.findOne({ _id: id }).exec(sendResponse);
+        return;
+    }
 
-// get job details with name of the company as query
-exports.getJdcompanyname = (req, res) => {
-    const {companyname}  = req.query;
-    jd.find({ companyName: { $regex: companyname, $options: "i" }})
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
+    // check for companyname
+    if (!!companyname) {
+        conditions.companyName = { $regex: companyname, $options: "i" };
+    }
 
-// get job desc with batch
-exports.getJobsBatch = (req, res) => {
-    const { batch, year } = req.query;
-    const searchedYear = batch || year;
+    // check for batch or year
+    if (!!batch) {
+        conditions.batch = { $regex: batch, $options: "i" };
+    }
 
-    jd.find({
-        $or: [
-            { batch: { $regex: searchedYear, $options: "i" } },
-            { batch: { $regex: "any", $options: "i" } },
-            { batch: { $regex: "N/A", $options: "i" } },
-            { batch: { $regex: "N", $options: "i" } },
-        ],
-    })
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
+    // check for degree
+    if (!!degree) {
+        conditions.degree = { $regex: degree, $options: "i" };
+    }
 
-// get job desc with degree
-exports.getJobsDegree = (req, res) => {
-    const { degree } = req.query;
+    // check for jobtype like internship or full time
+    if (!!jobtype) {
+        conditions.jobtype = { $regex: jobtype, $options: "i" };
+    }
 
-    jd.find({ degree: { $regex: degree, $options: "i" }})
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
+    // if user search any query including company name then search for it in title
+    // if any word of query is present in title then return the result
+    if (!!query) {
+        const queryArray = query.split(' ');
+        const queryConditions = queryArray.map(word => ({ title: { $regex: word, $options: "i" } }));
+        conditions.$or = queryConditions;
+    }
 
-// get jobs with type (intern, full time)
-exports.getJobsType = (req, res) => {
-    const { jobtype } = req.query;
+    // check for location
+    if (!!location) {
+        conditions.location = { $regex: location, $options: "i" };
+    }
 
-    jd.find({ jobtype: { $regex: jobtype, $options: "i" }})
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
+    // check for page and size
+    if (!!page && !!size) {
+        const limit = parseInt(size);
+        const skip = (parseInt(page) - 1) * parseInt(size);
+        options.limit = limit;
+        options.skip = skip;
+    }
 
-// get a job based on id
-exports.getJobById = (req, res) => {
-    jd.findOne({ _id: req.params.id }).exec((err, result) => {
+    jd.find(conditions).sort({ _id: -1 }).limit(options.limit).skip(options.skip).exec(sendResponse);
+
+    function sendResponse(err, result) {
         if (err) {
             return apiErrorHandler(err, res);
         }
-        return res.status(200).send(result);
-    });
+        if (id || !page || !size) {
+            return res.status(200).send(result);
+        }
+        return jobDetailsHandler(result, res);
+    }
 };
 
-// get jobs based on user query
-exports.getJobsQuery = (req, res) => {
-    const { query } = req.query;
-
-    jd.find({ title: { $regex: query, $options: "i" }})
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
-
-// get jobs based on location
-exports.getJobsLocation = (req, res) => {
-    const { location } = req.query;
-
-    jd.find({ location: { $regex: location, $options: "i" }})
-        .sort({ _id: -1 })
-        .exec((err, result) => {
-            if (err) {
-                return apiErrorHandler(err, res);
-            }
-            return jobDetailsHandler(result, res);
-        });
-};
-
-// delete job based on id
+// delete job details based on id
 exports.deleteJobById = (req, res) => {
-    jd.deleteOne({ _id: req.params.id }).exec((err, result) => {
+    jd.deleteOne({ _id: req.params.id }).exec((err, res) => {
         if (err) {
             return apiErrorHandler(err, res);
         }
@@ -162,101 +92,75 @@ exports.deleteJobById = (req, res) => {
     });
 };
 
-// Update the existing data
-exports.updateJob = (req, res) => {
-    const {
-        title,
-        link,
-        salary,
-        batch,
-        role,
-        degree,
-        jobdesc,
-        eligibility,
-        experience,
-        lastdate,
-        skills,
-        location,
-        responsibility,
-        jobtype,
-        imagePath,
-        totalclick,
-        aboutCompany,
-    } = req.body;
+// update the click count of a particular job (by id)
+exports.updateClick = async (req, res) => {
+    try {
+        const updatedJob = await jd.findByIdAndUpdate(
+            { _id: req.params.id },
+            { $inc: { totalclick: 1 }},
+            { new: true }
+        );
 
-    jd.findOneAndUpdate(
-        { _id: req.params.id },
-        {
-            $set: {
-                title,
-                link,
-                salary,
-                batch,
-                role,
-                degree,
-                jobdesc,
-                eligibility,
-                experience,
-                lastdate,
-                skills,
-                location,
-                responsibility,
-                jobtype,
-                imagePath,
-                totalclick,
-                aboutCompany,
-            },
-        }
-    ).exec((err, result) => {
-        if (err) {
-            return res.status(500).json({
-                error: err.message,
+        if (!updatedJob) {
+            return res.status(404).json({
+                error: "Job not found",
             });
         }
-        return res.status(200).json({
-            message: "Successfully Updated",
-        });
-    });
-};
 
-exports.updateClick = (req, res) => {
-    jd.findByIdAndUpdate(
-        { _id: req.params.id },
-        {
-            $inc: { totalclick: 1 },
-        },
-        {
-            new: true,
-        }
-    ).exec((err, result) => {
-        if (err) {
-            return res.status(500).json({
-                error: err.message,
-            });
-        }
         return res.status(200).json({
             message: "Clicked",
         });
-    });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
 };
 
-// return cloudinary image link
-exports.getPosterLink = (req, res) => {
-    const file = req.files.photo;
-    cloudinary2.uploader.upload(file.tempFilePath, (err, result) => {
-        if (err) {
-            return res.status(500).json({
-                error: err.message,
+// update the existing data of a particular job (by id)
+exports.updateJob = async (req, res) => {
+    try {
+        const { title, link, salary, batch, role, degree, jobdesc, eligibility, experience, lastdate, skills, location, responsibility, jobtype, imagePath, totalclick, aboutCompany } = req.body;
+
+        const updatedJob = await jd.findOneAndUpdate(
+            { _id: req.params.id },
+            {
+                $set: {
+                    title,
+                    link,
+                    salary,
+                    batch,
+                    role,
+                    degree,
+                    jobdesc,
+                    eligibility,
+                    experience,
+                    lastdate,
+                    skills,
+                    location,
+                    responsibility,
+                    jobtype,
+                    imagePath,
+                    totalclick,
+                    aboutCompany,
+                },
+            }
+        );
+
+        if (!updatedJob) {
+            return res.status(404).json({
+                error: "Job not found",
             });
         }
-        return res.status(201).json({
-            url: result.secure_url,
+
+        return res.status(200).json({
+            message: "Successfully Updated",
         });
-    });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
 };
 
 // add new job data
-exports.addJobs = (req, res) => {
+exports.addJobs = async (req, res) => {
     const {
         title,
         link,
@@ -280,8 +184,8 @@ exports.addJobs = (req, res) => {
         imagePath,
     } = req.body;
 
-    if (!req.files) {
-        const data = new jd({
+    try {
+        let data = new jd({
             title,
             link,
             jdpage,
@@ -301,53 +205,20 @@ exports.addJobs = (req, res) => {
             aboutCompany,
             jdbanner,
             companyName,
-            imagePath
+            imagePath,
         });
-        data.save((err, result) => {
-            if (err) {
-                return res.status(500).json({
-                    error: err.message,
-                });
-            }
-            return res.status(201).json({
-                message: "Data added successfully",
-            });
+
+        if (!!req?.files) {
+            const file = req.files?.photo;
+            const result = await cloudinary.uploader.upload(file.tempFilePath);
+            data.imagePath = result.secure_url;
+        }
+
+        await data.save();
+        return res.status(201).json({
+            message: "Data added successfully",
         });
-    } else {
-        const file = req.files.photo;
-        cloudinary.uploader.upload(file.tempFilePath, (err, result) => {
-            const data = new jd({
-                title,
-                link,
-                jdpage,
-                salary,
-                batch,
-                degree,
-                jobdesc,
-                eligibility,
-                experience,
-                lastdate,
-                skills,
-                role,
-                location,
-                responsibility,
-                jobtype,
-                companytype,
-                aboutCompany,
-                jdbanner,
-                companyName,
-                imagePath: result.secure_url,
-            });
-            data.save((err, result) => {
-                if (err) {
-                    return res.status(500).json({
-                        error: err.message,
-                    });
-                }
-                return res.status(201).json({
-                    message: "Data added successfully",
-                });
-            });
-        });
+    } catch (err) {
+        return apiErrorHandler(err, res);
     }
 };

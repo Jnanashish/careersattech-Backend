@@ -4,12 +4,8 @@ const dotenv = require("dotenv");
 const fileUpload = require("express-fileupload");
 
 // import the routes
-const jdRoutes = require("./routes/jobDesc");
-const adLinkImgRoutes = require("./routes/adLinkImg");
-const adLink = require("./routes/adLink");
-const adBanner = require("./routes/adBanner");
-const showAdPop = require("./routes/showAdPop");
-const companyLogo = require("./routes/companyLogo");
+const jobdetailsRoutes = require("./routes/jobdetails");
+const companydetailsRoutes = require("./routes/companydetails");
 
 // connect to cofing file
 require("dotenv").config();
@@ -24,16 +20,10 @@ app.use(
 );
 app.use(express.json());
 
-
 // link to the router files for all the available routes routes appended with api
-app.use("/api", jdRoutes);
-app.use("/api", adLinkImgRoutes);
-app.use("/api", adLink);
-app.use("/api", adBanner);
-app.use("/api", showAdPop);
-app.use("/api", companyLogo);
+app.use("/api", jobdetailsRoutes);
+app.use("/api", companydetailsRoutes);
 
-
-// conection to port by default 5000
-const PORT = process.env.PORT || 5000;
+// connection to port by default 5000
+const PORT = process.env.PORT || 5002;
 app.listen(PORT);
