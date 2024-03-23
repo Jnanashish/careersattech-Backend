@@ -1,5 +1,5 @@
 // import the models
-const jd = require("../model/JobdetailsSchema");
+const jd = require("../model/jobdetailsSchema");
 require("dotenv").config();
 const { apiErrorHandler, jobDetailsHandler } = require("../Helpers/controllerHelper");
 
