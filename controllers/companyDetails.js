@@ -28,10 +28,10 @@ exports.addCompanyDetails = (req, res) => {
     });
 };
 
+// -----------------------------------------------------------
 // get company details by id or company name return only one company with the details
 exports.getCompanyDetails = (req, res) => {
     const { id, companyname } = req.query;
-    console.log("req.query", req.query);
     let query = {};
 
     if (!!id) {
@@ -51,13 +51,8 @@ exports.getCompanyDetails = (req, res) => {
                         error: err.message,
                     });
                 }
-                if (!!result) {
-                    return res.status(200).send(result);
-                } else {
-                    return res.status(404).json({
-                        error: "Company not found",
-                    });
-                }
+                
+                return res.status(200).send(result);
             });
     } else {
         companyDetails
@@ -69,17 +64,13 @@ exports.getCompanyDetails = (req, res) => {
                         error: err.message,
                     });
                 }
-                if (!!result) {
-                    return res.status(200).send(result);
-                } else {
-                    return res.status(404).json({
-                        error: "Company not found",
-                    });
-                }
+                
+                return res.status(200).send(result);
             });
     }
 };
 
+// -----------------------------------------------------------
 // get company logo only based on queried companyname
 exports.getCompanyLogo = (req, res) => {
     const companyName = req.query.companyname;
@@ -106,6 +97,7 @@ exports.getCompanyLogo = (req, res) => {
         });
 };
 
+// -----------------------------------------------------------
 // update company details
 exports.updateCompanyDetails = (req, res) => {
     const { smallLogo, largeLogo, companyInfo, listedJobs, companyType, careerPageLink, linkedinPageLink, isPromoted, companyName } = req.body;

@@ -80,6 +80,7 @@ exports.getJobs = (req, res) => {
     }
 };
 
+// -----------------------------------------------------------
 // delete job details based on id
 exports.deleteJobById = (req, res) => {
     jd.deleteOne({ _id: req.params.id }).exec((err, res) => {
@@ -92,6 +93,7 @@ exports.deleteJobById = (req, res) => {
     });
 };
 
+// -----------------------------------------------------------
 // update the click count of a particular job (by id)
 exports.updateClick = async (req, res) => {
     try {
@@ -115,6 +117,7 @@ exports.updateClick = async (req, res) => {
     }
 };
 
+// -----------------------------------------------------------
 // update the existing data of a particular job (by id)
 exports.updateJob = async (req, res) => {
     try {
@@ -159,6 +162,7 @@ exports.updateJob = async (req, res) => {
     }
 };
 
+// -----------------------------------------------------------
 // add new job data
 exports.addJobs = async (req, res) => {
     const {
