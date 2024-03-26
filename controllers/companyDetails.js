@@ -52,7 +52,8 @@ exports.getCompanyDetails = (req, res) => {
                     });
                 }
                 
-                return res.status(200).send(result);
+                const data = result || {}
+                return res.status(200).send(data);
             });
     } else {
         companyDetails
@@ -64,8 +65,8 @@ exports.getCompanyDetails = (req, res) => {
                         error: err.message,
                     });
                 }
-                
-                return res.status(200).send(result);
+                const data = result || {}
+                return res.status(200).send(data);
             });
     }
 };
