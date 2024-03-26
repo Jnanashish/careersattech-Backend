@@ -1,7 +1,8 @@
 const companyDetails = require("../model/companydetailsSchema");
-
+const {apiErrorHandler} = require("../Helpers/controllerHelper");
+ 
 // add company details
-exports.addCompanyDetails = (req, res) => {
+exports.addCompanyDetails = async (req, res) => {
     const { smallLogo, largeLogo, companyInfo, listedJobs, companyType, careerPageLink, linkedinPageLink, isPromoted, companyName } = req.body;
 
     const newCompany = new companyDetails({
@@ -16,16 +17,14 @@ exports.addCompanyDetails = (req, res) => {
         companyName,
     });
 
-    newCompany.save((err, res) => {
-        if (err) {
-            return res.status(500).json({
-                error: err.message,
-            });
-        }
-        return res.status(201).json({
-            message: "Company details added successfully",
+    try {
+        await newCompany.save();
+        return res.status(200).json({
+            message: "Data added successfully",
         });
-    });
+    } catch (error) {
+        return apiErrorHandler(err, res);
+    }
 };
 
 // -----------------------------------------------------------
