@@ -20,6 +20,6 @@ router.get("/companydetails/logo", getCompanyLogo); // Get company logo only by 
 
 router.put("/companydetails/update/:id", updateCompanyDetails); // Update company details by id
 
-router.put("/companydetails/delete/:id", deleteCompanyDetails); // Update company details by id
+router.delete("/companydetails/delete/:id", deleteCompanyDetails); // Update company details by id
 
 module.exports = router;
