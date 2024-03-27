@@ -3,6 +3,14 @@ const router = express.Router();
 
 const { addCompanyDetails, getCompanyDetails, getCompanyLogo, updateCompanyDetails } = require("../controllers/companyDetails");
 
+//allow cors
+router.use(
+    cors({
+        origin: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    })
+);
+
 router.post("/companydetails/add", addCompanyDetails); // add company details
 
 router.get("/companydetails/get", getCompanyDetails), // get company details by id or company name
