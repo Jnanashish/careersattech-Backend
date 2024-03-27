@@ -121,7 +121,7 @@ exports.updateClick = async (req, res) => {
 // update the existing data of a particular job (by id)
 exports.updateJob = async (req, res) => {
     try {
-        const { title, link, salary, batch, role, degree, jobdesc, eligibility, experience, lastdate, skills, location, responsibility, jobtype, imagePath, totalclick, aboutCompany } = req.body;
+        const { title, link, salary, batch, role, degree, jobdesc, eligibility, experience, lastdate, skills, location, responsibility, jobtype, imagePath, totalclick, aboutCompany, companyName } = req.body;
 
         const updatedJob = await jd.findOneAndUpdate(
             { _id: req.params.id },
@@ -144,6 +144,7 @@ exports.updateJob = async (req, res) => {
                     imagePath,
                     totalclick,
                     aboutCompany,
+                    companyName
                 },
             }
         );
