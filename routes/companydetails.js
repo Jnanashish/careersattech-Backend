@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const cors = require("cors");
 
-const { addCompanyDetails, getCompanyDetails, getCompanyLogo, updateCompanyDetails } = require("../controllers/companyDetails");
+const { addCompanyDetails, getCompanyDetails, getCompanyLogo, updateCompanyDetails, deleteCompanyDetails } = require("../controllers/companyDetails");
 
 //allow cors
 router.use(
@@ -19,5 +19,7 @@ router.get("/companydetails/get", getCompanyDetails), // get company details by 
 router.get("/companydetails/logo", getCompanyLogo); // Get company logo only by company name
 
 router.put("/companydetails/update/:id", updateCompanyDetails); // Update company details by id
+
+router.put("/companydetails/delete/:id", deleteCompanyDetails); // Update company details by id
 
 module.exports = router;

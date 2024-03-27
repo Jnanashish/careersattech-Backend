@@ -129,3 +129,14 @@ exports.updateCompanyDetails = (req, res) => {
         }
     );
 };
+
+exports.deleteCompanyDetails = (req, res) => {
+    companyDetails.deleteOne({ _id: req.params.id }).exec((err, res) => {
+        if (err) {
+            return apiErrorHandler(err, res);
+        }
+        return res.status(200).json({
+            message: "Deleted Successfully",
+        });
+    });
+}
