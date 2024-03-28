@@ -11,6 +11,7 @@ router.use(
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     })
 );
+router.options("*", cors());
 
 router.post("/companydetails/add", addCompanyDetails); // add company details
 

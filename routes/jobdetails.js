@@ -13,6 +13,7 @@ router.use(
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     })
 );
+router.options("*", cors());
 
 router.get("/jd/get", getJobs); // get all the available jobs with query parameters
 router.post("/jd/add", addJobs); // add new job details
