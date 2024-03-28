@@ -117,7 +117,7 @@ exports.updateCompanyDetails = (req, res) => {
             isPromoted,
             companyName,
         },
-        (err, res) => {
+        (err) => {
             if (err) {
                 return res.status(500).json({
                     error: err.message,
