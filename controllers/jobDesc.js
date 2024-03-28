@@ -83,7 +83,8 @@ exports.getJobs = (req, res) => {
 // -----------------------------------------------------------
 // delete job details based on id
 exports.deleteJobById = (req, res) => {
-    jd.deleteOne({ _id: req.params.id }).exec((err, res) => {
+
+    jd.deleteOne({ _id: req.params.id }).exec((err) => {
         if (err) {
             return apiErrorHandler(err, res);
         }

@@ -131,7 +131,8 @@ exports.updateCompanyDetails = (req, res) => {
 };
 
 exports.deleteCompanyDetails = (req, res) => {
-    companyDetails.deleteOne({ _id: req.params.id }).exec((err, res) => {
+
+    companyDetails.deleteOne({ _id: req.params.id }).exec((err) => {
         if (err) {
             return apiErrorHandler(err, res);
         }
