@@ -188,6 +188,7 @@ exports.addJobs = async (req, res) => {
         jdbanner,
         companyName,
         imagePath,
+        tags
     } = req.body;
 
     try {
@@ -212,6 +213,7 @@ exports.addJobs = async (req, res) => {
             jdbanner,
             companyName,
             imagePath,
+            tags
         });
 
         if (!!req?.files) {

@@ -34,7 +34,8 @@ const jobdetailsSchema = new mongoose.Schema(
             type: String,
         },
         skills: {
-            type: String,
+            type : [String],
+            default : [],
         },
         location: {
             type: String,
@@ -79,6 +80,10 @@ const jobdetailsSchema = new mongoose.Schema(
             type: String,
             default: "careerspage",
         },
+        tags : {
+            type : [String],
+            default : [],
+        }
     },
     { timestamps: true }
 );
