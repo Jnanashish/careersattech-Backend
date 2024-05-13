@@ -3,7 +3,7 @@ const router = express.Router();
 const cors = require("cors");
 
 // import methods from controllers
-const { getJobs, addJobs, updateClick, updateJob, deleteJobById } = require("../controllers/jobDesc");
+const { getJobs, addJobs, updateClick, updateJob, deleteJobById } = require("../controllers/jobs.controllers");
 const { getPosterLink } = require("../controllers/common");
 
 //allow cors

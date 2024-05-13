@@ -4,8 +4,8 @@ const dotenv = require("dotenv");
 const fileUpload = require("express-fileupload");
 
 // import the routes
-const jobdetailsRoutes = require("./routes/jobdetails");
-const companydetailsRoutes = require("./routes/companydetails");
+const jobdetailsRoutes = require("./routes/jobs.routes");
+const companydetailsRoutes = require("./routes/company.routes");
 
 // connect to cofing file
 require("dotenv").config();

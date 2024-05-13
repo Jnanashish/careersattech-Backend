@@ -7,7 +7,7 @@ exports.apiErrorHandler = (err, res) => {
 
 exports.jobDetailsHandler = (result, res) => {
     var data = {
-        data: result.map((value) => {
+        data: result.filter(value => value.isActive === true).map((value) => {
             const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName } = value;
             return {
                 id,

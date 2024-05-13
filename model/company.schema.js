@@ -3,8 +3,9 @@ const mongoose = require("mongoose");
 const companydetailsSchema = new mongoose.Schema({
     companyName: {
         type: String,
+        required: true,
     },
-    // company logo
+    // company logo (icon)
     smallLogo: {
         type: String,
     },
@@ -16,12 +17,10 @@ const companydetailsSchema = new mongoose.Schema({
     companyInfo: {
         type: String,
     },
-    listedJobs: {
-        type: Array,
-        default: [],
-    },
+    listedJobs: [{ type: mongoose.Schema.Types.ObjectId, ref: "Jobdesc" }],
     companyType: {
         type: String,
+        default: "productbased",
     },
     careerPageLink: {
         type: String,
@@ -35,5 +34,5 @@ const companydetailsSchema = new mongoose.Schema({
     },
 });
 
-const companyLogo = mongoose.model("CompanyLogo", companydetailsSchema);
-module.exports = companyLogo;
+const CompanyLogo = mongoose.model("CompanyLogo", companydetailsSchema);
+module.exports = CompanyLogo;

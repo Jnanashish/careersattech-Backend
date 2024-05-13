@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const cors = require("cors");
 
-const { addCompanyDetails, getCompanyDetails, getCompanyLogo, updateCompanyDetails, deleteCompanyDetails } = require("../controllers/companyDetails");
+const { addCompanyDetails, getCompanyDetails, getCompanyLogo, updateCompanyDetails, deleteCompanyDetails } = require("../controllers/company.controllers");
 
 //allow cors
 router.use(

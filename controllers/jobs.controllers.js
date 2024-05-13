@@ -1,5 +1,7 @@
 // import the models
-const jd = require("../model/jobdetailsSchema");
+const Jobdesc = require("../model/jobs.schema");
+const CompanyLogo = require("../model/company.schema");
+
 require("dotenv").config();
 const { apiErrorHandler, jobDetailsHandler } = require("../Helpers/controllerHelper");
 
@@ -22,7 +24,7 @@ exports.getJobs = (req, res) => {
 
     // check if id is present and return job details for it
     if (!!id) {
-        jd.findOne({ _id: id }).exec(sendResponse);
+        Jobdesc.findOne({ _id: id }).exec(sendResponse);
         return;
     }
 
@@ -49,8 +51,8 @@ exports.getJobs = (req, res) => {
     // if user search any query including company name then search for it in title
     // if any word of query is present in title then return the result
     if (!!query) {
-        const queryArray = query.split(' ');
-        const queryConditions = queryArray.map(word => ({ title: { $regex: word, $options: "i" } }));
+        const queryArray = query.split(" ");
+        const queryConditions = queryArray.map((word) => ({ title: { $regex: word, $options: "i" } }));
         conditions.$or = queryConditions;
     }
 
@@ -67,7 +69,15 @@ exports.getJobs = (req, res) => {
         options.skip = skip;
     }
 
-    jd.find(conditions).sort({ _id: -1 }).limit(options.limit).skip(options.skip).exec(sendResponse);
+    Jobdesc.find(conditions)
+        .populate({
+            path: "company",
+            select: "smallLogo largeLogo companyName companyInfo companyType",
+        })
+        .sort({ updatedAt: -1 })
+        .limit(options.limit)
+        .skip(options.skip)
+        .exec(sendResponse);
 
     function sendResponse(err, result) {
         if (err) {
@@ -82,27 +92,32 @@ exports.getJobs = (req, res) => {
 
 // -----------------------------------------------------------
 // delete job details based on id
-exports.deleteJobById = (req, res) => {
-
-    jd.deleteOne({ _id: req.params.id }).exec((err) => {
-        if (err) {
-            return apiErrorHandler(err, res);
+exports.deleteJobById = async (req, res) => {
+    try {
+        const deletedJob = await Jobdesc.findByIdAndDelete(req.params.id);
+        if (!deletedJob) {
+            return res.status(404).json({
+                error: "Job not found",
+            });
         }
+        // Remove the job id from the listed job field of company schema
+        const company = await CompanyLogo.findById(deletedJob.company);
+        company.listedJobs = company.listedJobs.filter(jobId => jobId.toString() !== req.params.id);
+        
+        await company.save();
         return res.status(200).json({
             message: "Deleted Successfully",
         });
-    });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
 };
 
 // -----------------------------------------------------------
 // update the click count of a particular job (by id)
 exports.updateClick = async (req, res) => {
     try {
-        const updatedJob = await jd.findByIdAndUpdate(
-            { _id: req.params.id },
-            { $inc: { totalclick: 1 }},
-            { new: true }
-        );
+        const updatedJob = await Jobdesc.findByIdAndUpdate({ _id: req.params.id }, { $inc: { totalclick: 1 } }, { new: true });
 
         if (!updatedJob) {
             return res.status(404).json({
@@ -122,31 +137,10 @@ exports.updateClick = async (req, res) => {
 // update the existing data of a particular job (by id)
 exports.updateJob = async (req, res) => {
     try {
-        const { title, link, salary, batch, role, degree, jobdesc, eligibility, experience, lastdate, skills, location, responsibility, jobtype, imagePath, totalclick, aboutCompany, companyName } = req.body;
-
-        const updatedJob = await jd.findOneAndUpdate(
+        const updatedJob = await Jobdesc.findOneAndUpdate(
             { _id: req.params.id },
             {
-                $set: {
-                    title,
-                    link,
-                    salary,
-                    batch,
-                    role,
-                    degree,
-                    jobdesc,
-                    eligibility,
-                    experience,
-                    lastdate,
-                    skills,
-                    location,
-                    responsibility,
-                    jobtype,
-                    imagePath,
-                    totalclick,
-                    aboutCompany,
-                    companyName
-                },
+                $set: { ...req.body },
             }
         );
 
@@ -165,66 +159,27 @@ exports.updateJob = async (req, res) => {
 };
 
 // -----------------------------------------------------------
-// add new job data
+// add new job data (POST)
 exports.addJobs = async (req, res) => {
-    const {
-        title,
-        link,
-        jdpage,
-        salary,
-        batch,
-        degree,
-        jobdesc,
-        eligibility,
-        experience,
-        lastdate,
-        skills,
-        role,
-        location,
-        responsibility,
-        jobtype,
-        companytype,
-        aboutCompany,
-        jdbanner,
-        companyName,
-        imagePath,
-        tags,
-        skilltags
-    } = req.body;
-
+    const { companyId } = req.body;
     try {
-        let data = new jd({
-            title,
-            link,
-            jdpage,
-            salary,
-            batch,
-            degree,
-            jobdesc,
-            eligibility,
-            experience,
-            lastdate,
-            skills,
-            role,
-            location,
-            responsibility,
-            jobtype,
-            companytype,
-            aboutCompany,
-            jdbanner,
-            companyName,
-            imagePath,
-            tags,
-            skilltags
-        });
+        let job = new Jobdesc({ ...req.body, company: companyId });
 
+        // if file is present in req then generate cdn image link
         if (!!req?.files) {
             const file = req.files?.photo;
             const result = await cloudinary.uploader.upload(file.tempFilePath);
-            data.imagePath = result.secure_url;
+            job.imagePath = result.secure_url;
         }
 
-        await data.save();
+        // add the job reference to company schema also
+        const company = await CompanyLogo.findById(companyId);
+        if (!!company) {
+            company?.listedJobs?.push(job._id);
+        }
+        await company.save();
+
+        await job.save();
         return res.status(201).json({
             message: "Data added successfully",
         });

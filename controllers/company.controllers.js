@@ -1,21 +1,9 @@
-const companyDetails = require("../model/companydetailsSchema");
-const {apiErrorHandler} = require("../Helpers/controllerHelper");
- 
-// add company details
-exports.addCompanyDetails = async (req, res) => {
-    const { smallLogo, largeLogo, companyInfo, listedJobs, companyType, careerPageLink, linkedinPageLink, isPromoted, companyName } = req.body;
+const companyDetails = require("../model/company.schema");
+const { apiErrorHandler } = require("../Helpers/controllerHelper");
 
-    const newCompany = new companyDetails({
-        smallLogo,
-        largeLogo,
-        companyInfo,
-        listedJobs,
-        companyType,
-        careerPageLink,
-        linkedinPageLink,
-        isPromoted,
-        companyName,
-    });
+// add company details (POST)
+exports.addCompanyDetails = async (req, res) => {
+    const newCompany = new companyDetails({ ...req.body });
 
     try {
         await newCompany.save();
@@ -28,7 +16,7 @@ exports.addCompanyDetails = async (req, res) => {
 };
 
 // -----------------------------------------------------------
-// get company details by id or company name return only one company with the details
+// get company details by id or company name return only one company details
 exports.getCompanyDetails = (req, res) => {
     const { id, companyname } = req.query;
     let query = {};
@@ -40,42 +28,38 @@ exports.getCompanyDetails = (req, res) => {
         query = { companyName: { $regex: companyname, $options: "i" } };
     }
 
-    if (Object.keys(query).length > 0) {
-        companyDetails
-            .findOne(query)
-            .sort({ _id: -1 })
-            .exec((err, result) => {
-                if (err) {
-                    return res.status(500).json({
-                        error: err.message,
-                    });
-                }
-                
-                const data = result || {}
-                return res.status(200).send(data);
-            });
-    } else {
-        companyDetails
-            .find()
-            .sort({ _id: -1 })
-            .exec((err, result) => {
-                if (err) {
-                    return res.status(500).json({
-                        error: err.message,
-                    });
-                }
-                const data = result || {}
-                return res.status(200).send(data);
-            });
-    }
+    companyDetails
+        .find(query)
+        .populate({
+            path : "listedJobs",
+        })
+        .sort({ _id: -1 })
+        .exec((err, result) => {
+            if (err) {
+                return res.status(500).json({
+                    error: err.message,
+                });
+            }
+            const data = result || {};
+            return res.status(200).send(data);
+        });
 };
 
 // -----------------------------------------------------------
 // get company logo only based on queried companyname
 exports.getCompanyLogo = (req, res) => {
-    const companyName = req.query.companyname;
+    const { id, companyname } = req.query;
+    let query = {};
+
+    if (!!id) {
+        query = { _id: id };
+    }
+    if (!!companyname) {
+        query = { companyName: { $regex: companyname, $options: "i" } };
+    }
+
     companyDetails
-        .findOne({ companyName: { $regex: companyName, $options: "i" } })
+        .findOne(query)
         .sort({ _id: -1 })
         .exec((err, result) => {
             if (err) {
@@ -100,23 +84,11 @@ exports.getCompanyLogo = (req, res) => {
 // -----------------------------------------------------------
 // update company details
 exports.updateCompanyDetails = (req, res) => {
-    const { smallLogo, largeLogo, companyInfo, listedJobs, companyType, careerPageLink, linkedinPageLink, isPromoted, companyName } = req.body;
-
     const companyId = req.params.id; // assuming the company id is passed as a query parameter
 
     companyDetails.findOneAndUpdate(
         { _id: companyId },
-        {
-            smallLogo,
-            largeLogo,
-            companyInfo,
-            listedJobs,
-            companyType,
-            careerPageLink,
-            linkedinPageLink,
-            isPromoted,
-            companyName,
-        },
+        { ...req.body },
         (err) => {
             if (err) {
                 return res.status(500).json({
@@ -131,7 +103,6 @@ exports.updateCompanyDetails = (req, res) => {
 };
 
 exports.deleteCompanyDetails = (req, res) => {
-
     companyDetails.deleteOne({ _id: req.params.id }).exec((err) => {
         if (err) {
             return apiErrorHandler(err, res);
@@ -140,4 +111,4 @@ exports.deleteCompanyDetails = (req, res) => {
             message: "Deleted Successfully",
         });
     });
-}
+};
