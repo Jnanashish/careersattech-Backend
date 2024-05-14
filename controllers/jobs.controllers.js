@@ -74,7 +74,7 @@ exports.getJobs = (req, res) => {
             path: "company",
             select: "smallLogo largeLogo companyName companyInfo companyType",
         })
-        .sort({ updatedAt: -1 })
+        .sort({ _id: -1 })
         .limit(options.limit)
         .skip(options.skip)
         .exec(sendResponse);
@@ -176,9 +176,9 @@ exports.addJobs = async (req, res) => {
         const company = await CompanyLogo.findById(companyId);
         if (!!company) {
             company?.listedJobs?.push(job._id);
+            await company.save();
         }
-        await company.save();
-
+        
         await job.save();
         return res.status(201).json({
             message: "Data added successfully",
