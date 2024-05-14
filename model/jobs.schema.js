@@ -14,7 +14,7 @@ const jobdetailsSchema = new mongoose.Schema(
         eligibility: { type: String },
         experience: { type: String },
         lastdate: { type: String }, // application deadline
-        skills: [String], // array of skills tag
+        skills: { type: String }, // array of skills tag
         location: { type: String },
         responsibility: { type: String },
 
