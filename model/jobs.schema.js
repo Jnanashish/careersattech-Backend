@@ -74,6 +74,7 @@ const jobdetailsSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "CompanyLogo",
         },
+        benifits: { type: String },
     },
     { timestamps: true }
 );

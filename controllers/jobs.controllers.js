@@ -101,10 +101,12 @@ exports.deleteJobById = async (req, res) => {
             });
         }
         // Remove the job id from the listed job field of company schema
-        const company = await CompanyLogo.findById(deletedJob.company);
-        company.listedJobs = company.listedJobs.filter(jobId => jobId.toString() !== req.params.id);
+        const company = await CompanyLogo.findById(deletedJob?.company);
+        if(!!company){
+            company.listedJobs = company.listedJobs.filter(jobId => jobId.toString() !== req.params.id);
+            await company.save();
+        }
         
-        await company.save();
         return res.status(200).json({
             message: "Deleted Successfully",
         });
