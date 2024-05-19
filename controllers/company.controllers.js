@@ -9,6 +9,7 @@ exports.addCompanyDetails = async (req, res) => {
         await newCompany.save();
         return res.status(200).json({
             message: "Data added successfully",
+            id: newCompany?._id,
         });
     } catch (error) {
         return apiErrorHandler(err, res);
