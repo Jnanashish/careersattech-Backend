@@ -17,7 +17,7 @@ cloudinary.config({
 // get job details based on various query parameters
 exports.getJobs = (req, res) => {
     // get all the query params
-    const { page, size, companyname, batch, degree, jobtype, query, location, id } = req.query;
+    const { page, size, companyname, batch, degree, jobtype, query, location, id, jobId } = req.query;
 
     let conditions = {};
     let options = {};
@@ -46,6 +46,11 @@ exports.getJobs = (req, res) => {
     // check for jobtype like internship or full time
     if (!!jobtype) {
         conditions.jobtype = { $regex: jobtype, $options: "i" };
+    }
+
+    // check for jobtype like internship or full time
+    if (!!jobId) {
+        conditions.jobId = { $regex: jobId, $options: "i" };
     }
 
     // if user search any query including company name then search for it in title
@@ -102,11 +107,11 @@ exports.deleteJobById = async (req, res) => {
         }
         // Remove the job id from the listed job field of company schema
         const company = await CompanyLogo.findById(deletedJob?.company);
-        if(!!company){
-            company.listedJobs = company.listedJobs.filter(jobId => jobId.toString() !== req.params.id);
+        if (!!company) {
+            company.listedJobs = company.listedJobs.filter((jobId) => jobId.toString() !== req.params.id);
             await company.save();
         }
-        
+
         return res.status(200).json({
             message: "Deleted Successfully",
         });
@@ -180,7 +185,7 @@ exports.addJobs = async (req, res) => {
             company?.listedJobs?.push(job._id);
             await company.save();
         }
-        
+
         await job.save();
         return res.status(201).json({
             message: "Data added successfully",
