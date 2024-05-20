@@ -17,10 +17,11 @@ cloudinary.config({
 // get job details based on various query parameters
 exports.getJobs = (req, res) => {
     // get all the query params
-    const { page, size, companyname, batch, degree, jobtype, query, location, id, jobId } = req.query;
+    const { page, size, companyname, batch, degree, jobtype, query, location, id, jobId, priority } = req.query;
 
     let conditions = {};
     let options = {};
+    let sort = {_id : -1}
 
     // check if id is present and return job details for it
     if (!!id) {
@@ -74,12 +75,16 @@ exports.getJobs = (req, res) => {
         options.skip = skip;
     }
 
+    if(!!priority){
+        sort = { priority: -1, _id: -1 }
+    }
+
     Jobdesc.find(conditions)
         .populate({
             path: "company",
             select: "smallLogo largeLogo companyName companyInfo companyType",
         })
-        .sort({ _id: -1 })
+        .sort(sort)
         .limit(options.limit)
         .skip(options.skip)
         .exec(sendResponse);

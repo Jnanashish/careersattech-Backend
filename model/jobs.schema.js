@@ -75,6 +75,12 @@ const jobdetailsSchema = new mongoose.Schema(
             ref: "CompanyLogo",
         },
         benifits: { type: String },
+        // based on priority jobs will be appears on list 
+        // jobs with more priority will apears on top
+        priority: { 
+            type: Number,
+            default: 1,
+        }
     },
     { timestamps: true }
 );
