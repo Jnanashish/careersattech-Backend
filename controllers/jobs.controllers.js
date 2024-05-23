@@ -75,8 +75,8 @@ exports.getJobs = (req, res) => {
         options.skip = skip;
     }
 
-    if(!!priority){
-        sort = { priority: -1, _id: -1 }
+    if (!!priority) {
+        sort = { priority: -1, _id: -1 };
     }
 
     Jobdesc.find(conditions)

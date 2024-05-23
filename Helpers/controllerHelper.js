@@ -1,3 +1,5 @@
+const Jobdesc = require("../model/jobs.schema");
+
 // handle api error
 exports.apiErrorHandler = (err, res) => {
     return res.status(500).json({
@@ -5,10 +7,21 @@ exports.apiErrorHandler = (err, res) => {
     });
 };
 
-exports.jobDetailsHandler = (result, res) => {
+const totalEntriesCount = async (req, res) => {
+    const calculateCount = (err, count) => {
+        return count;
+    }
+
+    return Jobdesc.count({}, calculateCount())
+};
+
+
+exports.jobDetailsHandler = async (result, res) => {
+    // console.log("Jobdesc.count()", await totalEntriesCount());
     var data = {
+        totalCount : await totalEntriesCount(),
         data: result.filter(value => value.isActive === true).map((value) => {
-            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName } = value;
+            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, smallLogo, largeLogo, companyInfo, companyType } = value;
             return {
                 id,
                 title,
@@ -25,6 +38,10 @@ exports.jobDetailsHandler = (result, res) => {
                 companytype,
                 role,
                 companyName,
+                smallLogo,
+                largeLogo,
+                companyInfo,
+                companyType
             };
         }),
     };
