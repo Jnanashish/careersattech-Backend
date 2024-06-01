@@ -25,7 +25,12 @@ exports.getJobs = (req, res) => {
 
     // check if id is present and return job details for it
     if (!!id) {
-        Jobdesc.findOne({ _id: id }).exec(sendResponse);
+        Jobdesc.findOne({ _id: id })
+            .populate({
+                path: "company",
+                select: "smallLogo largeLogo companyName companyInfo companyType",
+            })
+            .exec(sendResponse);
         return;
     }
 

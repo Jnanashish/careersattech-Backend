@@ -21,7 +21,7 @@ exports.jobDetailsHandler = async (result, res) => {
     var data = {
         totalCount : await totalEntriesCount(),
         data: result.filter(value => value.isActive === true).map((value) => {
-            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, smallLogo, largeLogo, companyInfo, companyType } = value;
+            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, smallLogo, largeLogo, companyInfo, companyType, company } = value;
             return {
                 id,
                 title,
@@ -41,7 +41,8 @@ exports.jobDetailsHandler = async (result, res) => {
                 smallLogo,
                 largeLogo,
                 companyInfo,
-                companyType
+                companyType,
+                company
             };
         }),
     };
