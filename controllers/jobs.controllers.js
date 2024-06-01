@@ -21,7 +21,7 @@ exports.getJobs = (req, res) => {
 
     let conditions = {};
     let options = {};
-    let sort = {_id : -1}
+    let sort = { _id: -1 };
 
     // check if id is present and return job details for it
     if (!!id) {
@@ -148,11 +148,12 @@ exports.updateClick = async (req, res) => {
 // -----------------------------------------------------------
 // update the existing data of a particular job (by id)
 exports.updateJob = async (req, res) => {
+    const { companyId } = req.body;
     try {
         const updatedJob = await Jobdesc.findOneAndUpdate(
             { _id: req.params.id },
             {
-                $set: { ...req.body },
+                $set: { ...req.body, company: companyId },
             }
         );
 
@@ -160,6 +161,13 @@ exports.updateJob = async (req, res) => {
             return res.status(404).json({
                 error: "Job not found",
             });
+        }
+
+        // add the job reference to company schema also
+        const company = await CompanyLogo.findById(companyId);
+        if (!!company) {
+            company?.listedJobs?.push(req.params.id);
+            await company.save();
         }
 
         return res.status(200).json({
