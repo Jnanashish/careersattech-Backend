@@ -171,8 +171,8 @@ exports.updateJob = async (req, res) => {
 
         // add the job reference to company schema also
         const company = await CompanyLogo.findById(companyId);
-        if (!!company) {
-            company?.listedJobs?.push(req.params.id);
+        if (!!company && !company.listedJobs.includes(req.params.id)) {
+            company.listedJobs.push(req.params.id);
             await company.save();
         }
 
