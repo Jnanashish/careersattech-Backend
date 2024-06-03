@@ -100,9 +100,9 @@ exports.getJobs = (req, res) => {
             return apiErrorHandler(err, res);
         }
         if (id || !page || !size) {
-            return res.status(200).send(result);
+            return jobDetailsHandler(result, res, conditions);
         }
-        return jobDetailsHandler(result, res);
+        return jobDetailsHandler(result, res, conditions, true);
     }
 };
 

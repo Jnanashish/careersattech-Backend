@@ -1,3 +1,4 @@
+const { log } = require("console");
 const Jobdesc = require("../model/jobs.schema");
 
 // handle api error
@@ -7,20 +8,25 @@ exports.apiErrorHandler = (err, res) => {
     });
 };
 
+const countTotalEntries = async (filter = {}) => {
+    const count = await Jobdesc.countDocuments(filter);
+    return count;
+};
+
 const totalEntriesCount = async (req, res) => {
     const calculateCount = (err, count) => {
         return count;
-    }
+    };
 
-    return Jobdesc.count({}, calculateCount())
+    return Jobdesc.count({}, calculateCount());
 };
 
-
-exports.jobDetailsHandler = async (result, res) => {
-    var data = {
-        totalCount : await totalEntriesCount(),
-        data: result.filter(value => value.isActive === true).map((value) => {
-            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company } = value;
+const filterData = (result) => {
+    const filteredArray = result
+        .filter((value) => value.isActive === true)
+        .map((value) => {
+            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company } =
+                value;
             return {
                 id,
                 title,
@@ -39,9 +45,19 @@ exports.jobDetailsHandler = async (result, res) => {
                 companyName,
                 companyInfo,
                 companyType,
-                company
+                company,
             };
-        }),
+        });
+
+        return filteredArray;
+};
+
+exports.jobDetailsHandler = async (result, res, conditions, filteredData = false) => {
+    // console.log("filterData(result)", filterData(result), result);
+    var data = {
+        totalCount: await countTotalEntries(conditions),
+        data: filteredData ? filterData(result) : result,
     };
+
     return res.status(200).send(data);
 };
