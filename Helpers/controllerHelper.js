@@ -9,6 +9,10 @@ exports.apiErrorHandler = (err, res) => {
 };
 
 const countTotalEntries = async (filter = {}) => {
+    if(!!filter?.isActive){
+        delete filter.isActive;
+    }
+    
     const count = await Jobdesc.countDocuments(filter);
     return count;
 };
@@ -25,7 +29,7 @@ const filterData = (result) => {
     const filteredArray = result
         .filter((value) => value.isActive === true)
         .map((value) => {
-            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company } =
+            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company, isActive } =
                 value;
             return {
                 id,
@@ -46,6 +50,7 @@ const filterData = (result) => {
                 companyInfo,
                 companyType,
                 company,
+                isActive
             };
         });
 
