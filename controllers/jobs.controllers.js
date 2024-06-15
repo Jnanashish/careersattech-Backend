@@ -17,7 +17,7 @@ cloudinary.config({
 // get job details based on various query parameters
 exports.getJobs = (req, res) => {
     // get all the query params
-    const { page, size, companyname, batch, degree, jobtype, query, location, id, jobId, priority } = req.query;
+    const { page, size, companyname, batch, degree, jobtype, query, location, id, jobId, priority, filterData } = req.query;
 
     let conditions = {};
     let options = {};
@@ -102,7 +102,7 @@ exports.getJobs = (req, res) => {
         if (id || !page || !size) {
             return jobDetailsHandler(result, res, conditions);
         }
-        return jobDetailsHandler(result, res, conditions, true);
+        return jobDetailsHandler(result, res, conditions, filterData);
     }
 };
 
