@@ -102,7 +102,7 @@ exports.getJobs = (req, res) => {
         if (id || !page || !size) {
             return jobDetailsHandler(result, res, conditions);
         }
-        return jobDetailsHandler(result, res, conditions, filterData);
+        return jobDetailsHandler(result, res, conditions, true);
     }
 };
 

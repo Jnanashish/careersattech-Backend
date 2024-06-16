@@ -60,7 +60,7 @@ const filterData = (result) => {
 exports.jobDetailsHandler = async (result, res, conditions, filteredData = false) => {
     var data = {
         totalCount: await countTotalEntries(conditions),
-        data: (!filteredData || !!filteredData === "false") ? filterData(result) : result,
+        data: filteredData ? filterData(result) : result,
     };
 
     return res.status(200).send(data);
