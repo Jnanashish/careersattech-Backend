@@ -1,4 +1,3 @@
-const { log } = require("console");
 const Jobdesc = require("../model/jobs.schema");
 
 // handle api error
@@ -8,6 +7,7 @@ exports.apiErrorHandler = (err, res) => {
     });
 };
 
+// count total number of entries based on filter
 const countTotalEntries = async (filter = {}) => {
     if(!!filter?.isActive){
         delete filter.isActive;
@@ -17,21 +17,14 @@ const countTotalEntries = async (filter = {}) => {
     return count;
 };
 
-const totalEntriesCount = async (req, res) => {
-    const calculateCount = (err, count) => {
-        return count;
-    };
-
-    return Jobdesc.count({}, calculateCount());
-};
-
 const filterData = (result) => {
     const filteredArray = result
         .filter((value) => value.isActive === true)
         .map((value) => {
-            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company, isActive } =
+            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company, isActive, _id } =
                 value;
             return {
+                _id,
                 id,
                 title,
                 link,
@@ -57,10 +50,11 @@ const filterData = (result) => {
         return filteredArray;
 };
 
-exports.jobDetailsHandler = async (result, res, conditions, filteredData = false) => {
+// return job details
+exports.jobDetailsHandler = async (result, res, conditions, filteredData = 0) => {
     var data = {
         totalCount: await countTotalEntries(conditions),
-        data: filteredData ? filterData(result) : result,
+        data: !!filteredData ? filterData(result) : result,
     };
 
     return res.status(200).send(data);
