@@ -79,7 +79,7 @@ exports.getJobs = (req, res) => {
         const skip = (parseInt(page) - 1) * parseInt(size);
         options.limit = limit;
         options.skip = skip;
-        conditions.isActive = true
+        // conditions.isActive = true
     }
 
     if (!!priority) {
