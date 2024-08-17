@@ -8,11 +8,11 @@ exports.apiErrorHandler = (err, res) => {
 };
 
 // count total number of entries based on filter
-const countTotalEntries = async (filter = {}) => {
-    if(!!filter?.isActive){
-        delete filter.isActive;
+const countTotalEntries = async (filter = {}, filteredData) => {
+    // if response array is filterd filter the count also
+    if(!!filteredData){
+        filter.isActive = true
     }
-    
     const count = await Jobdesc.countDocuments(filter);
     return count;
 };
@@ -53,7 +53,7 @@ const filterData = (result) => {
 // return job details
 exports.jobDetailsHandler = async (result, res, conditions, filteredData = 0) => {
     var data = {
-        totalCount: await countTotalEntries(conditions),
+        totalCount: await countTotalEntries(conditions, filteredData),
         data: !!filteredData ? filterData(result) : result,
     };
 
