@@ -190,9 +190,14 @@ exports.updateJob = async (req, res) => {
 // -----------------------------------------------------------
 // add new job data (POST)
 exports.addJobs = async (req, res) => {
-    const { companyId } = req.body;
+    const { companyId, tags } = req.body;
     try {
-        let job = new Jobdesc({ ...req.body, company: companyId });
+        let tagsArray;
+        if(!!tags){
+            tagsArray = tags.split(',');
+        }
+
+        let job = new Jobdesc({ ...req.body, tags: tagsArray, company: companyId });
 
         // if file is present in req then generate cdn image link
         if (!!req?.files) {

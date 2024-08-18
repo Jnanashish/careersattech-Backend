@@ -51,7 +51,7 @@ const jobdetailsSchema = new mongoose.Schema(
             default: "careerspage",
         },
         tags: {
-            type: [String],
+            type: [],
             default: [],
         },
         skilltags: {
