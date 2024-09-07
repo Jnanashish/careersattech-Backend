@@ -157,12 +157,17 @@ exports.updateClick = async (req, res) => {
 // -----------------------------------------------------------
 // update the existing data of a particular job (by id)
 exports.updateJob = async (req, res) => {
-    const { companyId } = req.body;
+    const { companyId, tags } = req.body;
     try {
+        let tagsArray;
+        if(!!tags){
+            tagsArray = tags.split(',');
+        }
+
         const updatedJob = await Jobdesc.findOneAndUpdate(
             { _id: req.params.id },
             {
-                $set: { ...req.body, company: companyId },
+                $set: { ...req.body, tags: tagsArray, company: companyId },
             }
         );
 
