@@ -9,7 +9,7 @@ exports.apiErrorHandler = (err, res) => {
 
 // count total number of entries based on filter
 const countTotalEntries = async (filter = {}, filteredData) => {
-    // if response array is filterd filter the count also
+    // if response array is filterd filter the count also are
     if(!!filteredData){
         filter.isActive = true
     }
