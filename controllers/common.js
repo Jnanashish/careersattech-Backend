@@ -5,7 +5,6 @@ cloudinary2.config({
     api_secret: process.env.API_SECRET2,
     secure: true,
 });
-const companycareerspagedata = require("../Data/companycareerpage");
 // upload any image and get the cloudinary image link
 exports.getPosterLink = (req, res) => {
     const file = req.files.photo;

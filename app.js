@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const dotenv = require("dotenv");
 const fileUpload = require("express-fileupload");
-
+const scrap = require("./Temp/scrapper"); 
 // import the routes
 const jobdetailsRoutes = require("./routes/jobs.routes");
 const companydetailsRoutes = require("./routes/company.routes");
@@ -26,4 +26,5 @@ app.use("/api", companydetailsRoutes);
 
 // connection to port by default 5000
 const PORT = process.env.PORT || 5002;
+scrap()
 app.listen(PORT);
