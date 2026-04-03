@@ -1,9 +1,14 @@
 const Jobdesc = require("../model/jobs.schema");
 
+// escape special regex characters from user input to prevent ReDoS attacks
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+exports.escapeRegex = escapeRegex;
+
 // handle api error
 exports.apiErrorHandler = (err, res) => {
+    console.error("API Error:", err);
     return res.status(500).json({
-        error: err?.message,
+        error: "Internal server error",
     });
 };
 

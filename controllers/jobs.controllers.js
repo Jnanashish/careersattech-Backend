@@ -1,9 +1,8 @@
 // import the models
+const fs = require("fs");
 const Jobdesc = require("../model/jobs.schema");
 const CompanyLogo = require("../model/company.schema");
-
-require("dotenv").config();
-const { apiErrorHandler, jobDetailsHandler } = require("../Helpers/controllerHelper");
+const { apiErrorHandler, jobDetailsHandler, escapeRegex } = require("../Helpers/controllerHelper");
 
 // to store image files cloudinary config
 const cloudinary = require("cloudinary").v2;
@@ -15,97 +14,85 @@ cloudinary.config({
 });
 
 // get job details based on various query parameters
-exports.getJobs = (req, res) => {
+exports.getJobs = async (req, res) => {
     // get all the query params
     // by default data will be filtered (filterData = 1)
     const { page, size, companyname, batch, degree, jobtype, query, location, id, jobId, priority, filterData = 1 } = req.query;
 
     let conditions = {};
-    let options = {};
     let sort = { _id: -1 };
 
     // check if id is present and return job details for it
     if (!!id) {
-        Jobdesc.findOne({ _id: id })
-            .populate({
+        try {
+            const result = await Jobdesc.findOne({ _id: id }).populate({
                 path: "company",
                 select: "smallLogo largeLogo companyName companyInfo companyType",
-            })
-            .exec(sendResponse);
-        return;
+            });
+            return jobDetailsHandler(result, res, conditions);
+        } catch (err) {
+            return apiErrorHandler(err, res);
+        }
     }
 
-    // check for companyname
     if (!!companyname) {
-        conditions.companyName = { $regex: companyname, $options: "i" };
+        conditions.companyName = { $regex: escapeRegex(companyname), $options: "i" };
     }
 
-    // check for batch or year
     if (!!batch) {
-        conditions.batch = { $regex: batch, $options: "i" };
+        conditions.batch = { $regex: escapeRegex(batch), $options: "i" };
     }
 
-    // check for degree
     if (!!degree) {
-        conditions.degree = { $regex: degree, $options: "i" };
+        conditions.degree = { $regex: escapeRegex(degree), $options: "i" };
     }
 
-    // check for jobtype like internship or full time
     if (!!jobtype) {
-        conditions.jobtype = { $regex: jobtype, $options: "i" };
+        conditions.jobtype = { $regex: escapeRegex(jobtype), $options: "i" };
     }
 
-    // check for jobtype like internship or full time
     if (!!jobId) {
-        conditions.jobId = { $regex: jobId, $options: "i" };
+        conditions.jobId = { $regex: escapeRegex(jobId), $options: "i" };
     }
 
-    // if user search any query including company name then search for it in title
-    // if any word of query is present in title then return the result
     if (!!query) {
         const queryArray = query.split(" ");
-        const queryConditions = queryArray.map((word) => ({ title: { $regex: word, $options: "i" } }));
+        const queryConditions = queryArray.map((word) => ({ title: { $regex: escapeRegex(word), $options: "i" } }));
         conditions.$or = queryConditions;
     }
 
-    // check for location
     if (!!location) {
-        conditions.location = { $regex: location, $options: "i" };
-    }
-
-    // check for page and size
-    if (!!page && !!size) {
-        const limit = parseInt(size);
-        const skip = (parseInt(page) - 1) * parseInt(size);
-        options.limit = limit;
-        options.skip = skip;
-        // conditions.isActive = true
+        conditions.location = { $regex: escapeRegex(location), $options: "i" };
     }
 
     if (!!priority) {
         sort = { priority: -1, _id: -1 };
     }
 
-    // find job details based on conditions
-    Jobdesc.find(conditions)
-        .populate({
-            path: "company",
-            select: "smallLogo largeLogo companyName companyInfo companyType",
-        })
-        .sort(sort)
-        .limit(options.limit)
-        .skip(options.skip)
-        .exec(sendResponse);
+    try {
+        let dbQuery = Jobdesc.find(conditions)
+            .populate({
+                path: "company",
+                select: "smallLogo largeLogo companyName companyInfo companyType",
+            })
+            .sort(sort);
 
-    function sendResponse(err, result) {
-        if (err) {
-            return apiErrorHandler(err, res);
+        if (!!page && !!size) {
+            const limit = Math.min(Math.max(parseInt(size) || 20, 1), 100);
+            const pageNum = Math.max(parseInt(page) || 1, 1);
+            const skip = (pageNum - 1) * limit;
+            dbQuery = dbQuery.limit(limit).skip(skip);
         }
-        // when page and size not present 
-        if (id || !page || !size) {
+
+        const result = await dbQuery;
+
+        // when page and size not present
+        if (!page || !size) {
             return jobDetailsHandler(result, res, conditions);
         }
         return jobDetailsHandler(result, res, conditions, parseInt(filterData));
+    } catch (err) {
+        return apiErrorHandler(err, res);
     }
 };
 
@@ -164,11 +151,23 @@ exports.updateJob = async (req, res) => {
             tagsArray = tags.split(',');
         }
 
+        const allowedFields = [
+            "title", "link", "jdpage", "salary", "batch", "degree", "jobdesc",
+            "eligibility", "experience", "lastdate", "skills", "location",
+            "responsibility", "jobtype", "imagePath", "companytype", "aboutCompany",
+            "role", "jdbanner", "companyName", "platform", "skilltags", "salaryRange",
+            "workMode", "isActive", "jobId", "isFeaturedJob", "benefits", "priority",
+        ];
+        const updateData = {};
+        for (const field of allowedFields) {
+            if (req.body[field] !== undefined) updateData[field] = req.body[field];
+        }
+        if (tagsArray) updateData.tags = tagsArray;
+        if (companyId) updateData.company = companyId;
+
         const updatedJob = await Jobdesc.findOneAndUpdate(
             { _id: req.params.id },
-            {
-                $set: { ...req.body, tags: tagsArray, company: companyId },
-            }
+            { $set: updateData }
         );
 
         if (!updatedJob) {
@@ -177,11 +176,11 @@ exports.updateJob = async (req, res) => {
             });
         }
 
-        // add the job reference to company schema also
-        const company = await CompanyLogo.findById(companyId);
-        if (!!company && !company.listedJobs.includes(req.params.id)) {
-            company.listedJobs.push(req.params.id);
-            await company.save();
+        if (companyId) {
+            await CompanyLogo.updateOne(
+                { _id: companyId },
+                { $addToSet: { listedJobs: req.params.id } }
+            );
         }
 
         return res.status(200).json({
@@ -202,20 +201,38 @@ exports.addJobs = async (req, res) => {
             tagsArray = tags.split(',');
         }
 
-        let job = new Jobdesc({ ...req.body, tags: tagsArray, company: companyId });
+        const allowedFields = [
+            "title", "link", "jdpage", "salary", "batch", "degree", "jobdesc",
+            "eligibility", "experience", "lastdate", "skills", "location",
+            "responsibility", "jobtype", "imagePath", "companytype", "aboutCompany",
+            "role", "jdbanner", "companyName", "platform", "skilltags", "salaryRange",
+            "workMode", "isActive", "jobId", "isFeaturedJob", "benefits", "priority",
+        ];
+        const jobData = {};
+        for (const field of allowedFields) {
+            if (req.body[field] !== undefined) jobData[field] = req.body[field];
+        }
+        if (tagsArray) jobData.tags = tagsArray;
+        if (companyId) jobData.company = companyId;
 
-        // if file is present in req then generate cdn image link
-        if (!!req?.files) {
-            const file = req.files?.photo;
+        let job = new Jobdesc(jobData);
+
+        if (req?.files?.photo) {
+            const file = req.files.photo;
+            const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
+            if (!allowedTypes.includes(file.mimetype)) {
+                return res.status(400).json({ error: "Invalid file type. Allowed: jpeg, png, webp, svg" });
+            }
             const result = await cloudinary.uploader.upload(file.tempFilePath);
+            fs.unlink(file.tempFilePath, () => {});
             job.imagePath = result.secure_url;
         }
 
-        // add the job reference to company schema also
-        const company = await CompanyLogo.findById(companyId);
-        if (!!company) {
-            company?.listedJobs?.push(job._id);
-            await company.save();
+        if (companyId) {
+            await CompanyLogo.updateOne(
+                { _id: companyId },
+                { $addToSet: { listedJobs: job._id } }
+            );
         }
 
         await job.save();

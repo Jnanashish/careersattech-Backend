@@ -2,25 +2,31 @@ const express = require("express");
 const router = express.Router();
 const cors = require("cors");
 
+const requireAuth = require("../middleware/auth");
+const validateObjectId = require("../middleware/validateObjectId");
+
 const { addCompanyDetails, getCompanyDetails, getCompanyLogo, updateCompanyDetails, deleteCompanyDetails } = require("../controllers/company.controllers");
 
-//allow cors
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : ["http://localhost:3000"];
+
 router.use(
     cors({
-        origin: true,
+        origin: allowedOrigins,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     })
 );
-router.options("*", cors());
+router.options("*", cors({ origin: allowedOrigins }));
 
-router.post("/companydetails/add", addCompanyDetails); // add company details
+router.post("/companydetails/add", requireAuth, addCompanyDetails);
 
-router.get("/companydetails/get", getCompanyDetails), // get company details by id or company name
+router.get("/companydetails/get", getCompanyDetails);
 
-router.get("/companydetails/logo", getCompanyLogo); // Get company logo only by company name
+router.get("/companydetails/logo", getCompanyLogo);
 
-router.put("/companydetails/update/:id", updateCompanyDetails); // Update company details by id
+router.put("/companydetails/update/:id", requireAuth, validateObjectId, updateCompanyDetails);
 
-router.delete("/companydetails/delete/:id", deleteCompanyDetails); // Update company details by id
+router.delete("/companydetails/delete/:id", requireAuth, validateObjectId, deleteCompanyDetails);
 
 module.exports = router;

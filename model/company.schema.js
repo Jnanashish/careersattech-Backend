@@ -34,5 +34,7 @@ const companydetailsSchema = new mongoose.Schema({
     },
 });
 
+companydetailsSchema.index({ companyName: 1 });
+
 const CompanyLogo = mongoose.model("CompanyLogo", companydetailsSchema);
 module.exports = CompanyLogo;

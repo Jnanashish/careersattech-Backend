@@ -51,7 +51,7 @@ const jobdetailsSchema = new mongoose.Schema(
             default: "careerspage",
         },
         tags: {
-            type: [],
+            type: [String],
             default: [],
         },
         skilltags: {
@@ -74,16 +74,23 @@ const jobdetailsSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "CompanyLogo",
         },
-        benifits: { type: String },
-        // based on priority jobs will be appears on list 
-        // jobs with more priority will apears on top
-        priority: { 
+        benefits: { type: String },
+        priority: {
             type: Number,
             default: 1,
+            min: 0,
         }
     },
     { timestamps: true }
 );
+
+jobdetailsSchema.index({ companyName: 1 });
+jobdetailsSchema.index({ batch: 1 });
+jobdetailsSchema.index({ degree: 1 });
+jobdetailsSchema.index({ jobtype: 1 });
+jobdetailsSchema.index({ location: 1 });
+jobdetailsSchema.index({ isActive: 1 });
+jobdetailsSchema.index({ priority: -1, _id: -1 });
 
 const Jobdesc = mongoose.model("Jobdesc", jobdetailsSchema);
 
