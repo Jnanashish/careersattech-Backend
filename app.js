@@ -10,7 +10,7 @@ const companydetailsRoutes = require("./routes/company.routes");
 // connect to cofing file
 require("dotenv").config();
 
-// connect with database mongoose (url)
+// connect with database mongoose (url) here
 require("./DB/connection");
 
 app.use(
