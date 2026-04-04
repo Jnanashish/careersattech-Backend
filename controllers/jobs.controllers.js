@@ -157,6 +157,7 @@ exports.updateJob = async (req, res) => {
             "responsibility", "jobtype", "imagePath", "companytype", "aboutCompany",
             "role", "jdbanner", "companyName", "platform", "skilltags", "salaryRange",
             "workMode", "isActive", "jobId", "isFeaturedJob", "benefits", "priority",
+            "expiresAt", "source", "postedBy", "isVerified", "stipend", "category",
         ];
         const updateData = {};
         for (const field of allowedFields) {
@@ -207,6 +208,7 @@ exports.addJobs = async (req, res) => {
             "responsibility", "jobtype", "imagePath", "companytype", "aboutCompany",
             "role", "jdbanner", "companyName", "platform", "skilltags", "salaryRange",
             "workMode", "isActive", "jobId", "isFeaturedJob", "benefits", "priority",
+            "expiresAt", "source", "postedBy", "isVerified", "stipend", "category",
         ];
         const jobData = {};
         for (const field of allowedFields) {

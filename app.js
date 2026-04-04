@@ -6,7 +6,7 @@ const rateLimit = require("express-rate-limit");
 
 dotenv.config();
 
-const requiredEnvVars = ["DATABASE", "CLOUD_NAME", "API_KEY", "API_SECRET", "ADMIN_API_KEY"];
+const requiredEnvVars = ["DATABASE", "CLOUD_NAME", "API_KEY", "API_SECRET", "FIREBASE_PROJECT_ID", "FIREBASE_PRIVATE_KEY", "FIREBASE_CLIENT_EMAIL"];
 for (const envVar of requiredEnvVars) {
     if (!process.env[envVar]) {
         console.error(`FATAL: Missing required environment variable: ${envVar}`);
@@ -20,10 +20,13 @@ if (!process.env.ALLOWED_ORIGINS) {
 
 const app = express();
 
+require("./config/firebase");
 require("./DB/connection");
 
 const jobdetailsRoutes = require("./routes/jobs.routes");
 const companydetailsRoutes = require("./routes/company.routes");
+const scraperAdminRoutes = require("./scraper/admin.routes");
+const scheduler = require("./scraper/scheduler");
 
 app.use(helmet());
 
@@ -48,8 +51,10 @@ app.use(express.json({ limit: "1mb" }));
 
 app.use("/api", jobdetailsRoutes);
 app.use("/api", companydetailsRoutes);
+app.use("/api", scraperAdminRoutes);
 
 const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    scheduler.init();
 });

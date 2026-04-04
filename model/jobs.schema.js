@@ -79,7 +79,16 @@ const jobdetailsSchema = new mongoose.Schema(
             type: Number,
             default: 1,
             min: 0,
-        }
+        },
+        expiresAt: { type: Date },
+        source: { type: String },
+        postedBy: { type: String },
+        isVerified: { type: Boolean, default: false },
+        stipend: { type: Number },
+        category: {
+            type: String,
+            enum: ["engineering", "design", "product", "data", "devops", "qa", "management", "other"],
+        },
     },
     { timestamps: true }
 );

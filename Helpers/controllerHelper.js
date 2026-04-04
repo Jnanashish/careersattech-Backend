@@ -14,9 +14,13 @@ exports.apiErrorHandler = (err, res) => {
 
 // count total number of entries based on filter
 const countTotalEntries = async (filter = {}, filteredData) => {
-    // if response array is filterd filter the count also are
+    // if response array is filtered, filter the count also
     if(!!filteredData){
-        filter.isActive = true
+        filter.isActive = true;
+        filter.$or = [
+            { expiresAt: { $exists: false } },
+            { expiresAt: { $gte: new Date() } }
+        ];
     }
     const count = await Jobdesc.countDocuments(filter);
     return count;
@@ -24,9 +28,13 @@ const countTotalEntries = async (filter = {}, filteredData) => {
 
 const filterData = (result) => {
     const filteredArray = result
-        .filter((value) => value.isActive === true)
+        .filter((value) => {
+            if (value.isActive !== true) return false;
+            if (value.expiresAt && value.expiresAt < new Date()) return false;
+            return true;
+        })
         .map((value) => {
-            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company, isActive, _id } =
+            const { id, title, link, batch, degree, jobtype, imagePath, jdpage, createdAt, location, experience, totalclick, companytype, role, companyName, companyInfo, companyType, company, isActive, _id, isVerified, stipend, category, expiresAt } =
                 value;
             return {
                 _id,
@@ -48,7 +56,11 @@ const filterData = (result) => {
                 companyInfo,
                 companyType,
                 company,
-                isActive
+                isActive,
+                isVerified,
+                stipend,
+                category,
+                expiresAt
             };
         });
 
