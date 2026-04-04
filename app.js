@@ -1,5 +1,6 @@
 const express = require("express");
 const dotenv = require("dotenv");
+const cors = require("cors");
 const fileUpload = require("express-fileupload");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -27,6 +28,18 @@ const jobdetailsRoutes = require("./routes/jobs.routes");
 const companydetailsRoutes = require("./routes/company.routes");
 const scraperAdminRoutes = require("./scraper/admin.routes");
 const scheduler = require("./scraper/scheduler");
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : ["http://localhost:3000"];
+
+app.use(
+    cors({
+        origin: allowedOrigins,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allowedHeaders: ["Content-Type", "Authorization", "x-api-key"],
+    })
+);
 
 app.use(helmet());
 
