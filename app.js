@@ -20,6 +20,7 @@ if (!process.env.ALLOWED_ORIGINS) {
 }
 
 const app = express();
+app.set("trust proxy", 1);
 
 require("./config/firebase");
 require("./DB/connection");
