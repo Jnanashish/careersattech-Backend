@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const { v4: uuidv4 } = require("uuid");
+const { randomUUID } = require("crypto");
 const { scrapeAll } = require("./scraper");
 const { transformBatch } = require("./transformer");
 const { ingest } = require("./ingester");
@@ -8,7 +8,7 @@ const ScrapeLog = require("./models/ScrapeLog");
 const notifier = require("./notifier");
 
 async function runPipeline(trigger = "manual") {
-    const runId = uuidv4();
+    const runId = randomUUID();
     const startedAt = new Date();
     const aiProvider = getProvider().name;
 
