@@ -24,23 +24,36 @@ function stripHtml(html) {
     return $("body").text().replace(/\s+/g, " ").trim();
 }
 
+function buildFetchUrl(url) {
+    // ScraperAPI: 5000 free requests/month — https://www.scraperapi.com/
+    if (process.env.SCRAPERAPI_KEY) {
+        return `http://api.scraperapi.com?api_key=${process.env.SCRAPERAPI_KEY}&url=${encodeURIComponent(url)}&render=false`;
+    }
+    return url;
+}
+
 async function fetchPage(url, headers = {}) {
-    const response = await axios.get(url, {
-        headers: {
-            "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Upgrade-Insecure-Requests": "1",
-            ...headers,
-        },
-        timeout: 15000,
+    const fetchUrl = buildFetchUrl(url);
+    const isProxy = fetchUrl !== url;
+
+    const response = await axios.get(fetchUrl, {
+        headers: isProxy
+            ? {} // proxy handles headers
+            : {
+                  "User-Agent": USER_AGENT,
+                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                  "Accept-Language": "en-US,en;q=0.9",
+                  "Accept-Encoding": "gzip, deflate, br",
+                  "Cache-Control": "no-cache",
+                  "Pragma": "no-cache",
+                  "Sec-Fetch-Dest": "document",
+                  "Sec-Fetch-Mode": "navigate",
+                  "Sec-Fetch-Site": "none",
+                  "Sec-Fetch-User": "?1",
+                  "Upgrade-Insecure-Requests": "1",
+                  ...headers,
+              },
+        timeout: isProxy ? 30000 : 15000,
         maxRedirects: 5,
     });
     return response.data;
