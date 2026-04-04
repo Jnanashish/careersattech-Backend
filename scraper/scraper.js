@@ -60,6 +60,11 @@ async function fetchPage(url, headers = {}) {
 }
 
 async function scrapeOne(adapter, options = {}) {
+    if (typeof adapter.scrape === "function") {
+        console.log(`[Scraper] Starting ${adapter.displayName} (custom scrape)`);
+        return adapter.scrape(options);
+    }
+
     const limit = options.limit || adapter.selectors.jobLinks.limit;
     const stats = {
         jobLinksFound: 0,
