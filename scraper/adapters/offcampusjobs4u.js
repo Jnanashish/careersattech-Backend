@@ -8,7 +8,7 @@ module.exports = {
         jobLinks: {
             selector: ".entry-title.td-module-title a",
             attribute: "href",
-            limit: 20,
+            limit: 2,
         },
         companyUrl: {
             selector: ".td-post-content a[target='_blank'][rel='noopener noreferrer']",

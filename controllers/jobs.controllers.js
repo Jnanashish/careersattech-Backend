@@ -2,6 +2,7 @@
 const fs = require("fs");
 const Jobdesc = require("../model/jobs.schema");
 const CompanyLogo = require("../model/company.schema");
+const JobClickEvent = require("../model/jobClickEvent.schema");
 const { apiErrorHandler, jobDetailsHandler, escapeRegex } = require("../Helpers/controllerHelper");
 
 // to store image files cloudinary config
@@ -132,6 +133,12 @@ exports.updateClick = async (req, res) => {
                 error: "Job not found",
             });
         }
+
+        // Insert timestamped click event (fire-and-forget)
+        JobClickEvent.create({
+            jobId: req.params.id,
+            source: req.body.source || "apply_button",
+        }).catch((err) => console.error("Failed to log click event:", err));
 
         return res.status(200).json({
             message: "Clicked",

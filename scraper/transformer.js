@@ -112,9 +112,16 @@ async function transform(rawJob) {
             parsed.tags = parsed.tags.slice(0, 5).map((t) => t.toLowerCase());
             parsed.skilltags = parsed.skilltags.slice(0, 10).map((t) => t.toLowerCase());
 
-            // Ensure defaults
-            if (!parsed.workMode) parsed.workMode = "onsite";
-            if (!parsed.category) parsed.category = "other";
+            // Normalize enums
+            const validWorkModes = ["onsite", "hybrid", "remote"];
+            parsed.workMode = validWorkModes.includes(parsed.workMode?.toLowerCase())
+                ? parsed.workMode.toLowerCase()
+                : "onsite";
+
+            const validCategories = ["engineering", "design", "product", "data", "devops", "qa", "management", "other"];
+            parsed.category = validCategories.includes(parsed.category?.toLowerCase())
+                ? parsed.category.toLowerCase()
+                : "other";
             if (!parsed.platform) parsed.platform = "careerspage";
             if (!parsed.jobtype) parsed.jobtype = "Full time";
             if (!parsed.companytype) parsed.companytype = "Others";

@@ -1,23 +1,23 @@
 module.exports = {
     name: "freshershunt",
     displayName: "FreshersHunt",
-    baseUrl: "https://www.freshershunt.com",
+    baseUrl: "https://freshershunt.in",
     enabled: true,
 
     selectors: {
         jobLinks: {
-            selector: "TODO_SELECTOR",
+            selector: "a.fh-job-row",
             attribute: "href",
-            limit: 20,
+            limit: 2,
         },
         companyUrl: {
-            selector: "TODO_SELECTOR",
+            selector: 'a[target="_blank"][rel="noopener"]:contains("Apply Now")',
             attribute: "href",
-            fallbackSelector: null,
+            fallbackSelector: 'div[style*="text-align: center"] a[target="_blank"]',
         },
         meta: {
-            title: "TODO_SELECTOR",
-            company: "TODO_SELECTOR",
+            title: "h1.entry-title",
+            company: null,
             postedDate: null,
         },
     },

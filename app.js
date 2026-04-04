@@ -27,6 +27,7 @@ require("./DB/connection");
 
 const jobdetailsRoutes = require("./routes/jobs.routes");
 const companydetailsRoutes = require("./routes/company.routes");
+const analyticsRoutes = require("./routes/analytics.routes");
 const scraperAdminRoutes = require("./scraper/admin.routes");
 const scheduler = require("./scraper/scheduler");
 
@@ -65,6 +66,7 @@ app.use(express.json({ limit: "1mb" }));
 
 app.use("/api", jobdetailsRoutes);
 app.use("/api", companydetailsRoutes);
+app.use("/api", analyticsRoutes);
 app.use("/api", scraperAdminRoutes);
 
 const PORT = process.env.PORT || 5002;
