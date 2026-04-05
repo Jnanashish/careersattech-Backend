@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const companyDetails = require("../model/company.schema");
 const { apiErrorHandler, escapeRegex } = require("../Helpers/controllerHelper");
 
@@ -31,6 +32,9 @@ exports.getCompanyDetails = async (req, res) => {
     let query = {};
 
     if (!!id) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid company ID" });
+        }
         query = { _id: id };
     } else if (!!companyname) {
         query = { companyName: { $regex: escapeRegex(companyname), $options: "i" } };
@@ -62,6 +66,9 @@ exports.getCompanyLogo = async (req, res) => {
     let query = {};
 
     if (!!id) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid company ID" });
+        }
         query = { _id: id };
     } else if (!!companyname) {
         query = { companyName: { $regex: escapeRegex(companyname), $options: "i" } };

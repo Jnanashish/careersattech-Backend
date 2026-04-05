@@ -1,5 +1,6 @@
 // import the models
 const fs = require("fs");
+const mongoose = require("mongoose");
 const Jobdesc = require("../model/jobs.schema");
 const CompanyLogo = require("../model/company.schema");
 const JobClickEvent = require("../model/jobClickEvent.schema");
@@ -25,6 +26,9 @@ exports.getJobs = async (req, res) => {
 
     // check if id is present and return job details for it
     if (!!id) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: "Invalid job ID" });
+        }
         try {
             const result = await Jobdesc.findOne({ _id: id }).populate({
                 path: "company",
