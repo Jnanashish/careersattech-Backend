@@ -15,7 +15,7 @@ exports.addCompanyDetails = async (req, res) => {
 
     try {
         await newCompany.save();
-        return res.status(200).json({
+        return res.status(201).json({
             message: "Data added successfully",
             id: newCompany?._id,
         });
@@ -37,10 +37,17 @@ exports.getCompanyDetails = async (req, res) => {
     }
 
     try {
-        const result = await companyDetails
+        let dbQuery = companyDetails
             .find(query)
             .populate({ path: "listedJobs" })
             .sort({ _id: -1 });
+
+        // Prevent full table scan when no filters provided
+        if (!id && !companyname) {
+            dbQuery = dbQuery.limit(50);
+        }
+
+        const result = await dbQuery;
         return res.status(200).send(result || {});
     } catch (err) {
         console.error("Company API error:", err);
@@ -88,7 +95,10 @@ exports.updateCompanyDetails = async (req, res) => {
         for (const field of allowedFields) {
             if (req.body[field] !== undefined) updateData[field] = req.body[field];
         }
-        await companyDetails.findOneAndUpdate({ _id: req.params.id }, { $set: updateData });
+        const result = await companyDetails.findOneAndUpdate({ _id: req.params.id }, { $set: updateData });
+        if (!result) {
+            return res.status(404).json({ error: "Company not found" });
+        }
         return res.status(200).json({ message: "Company details updated successfully" });
     } catch (err) {
         console.error("Company API error:", err);
@@ -98,7 +108,10 @@ exports.updateCompanyDetails = async (req, res) => {
 
 exports.deleteCompanyDetails = async (req, res) => {
     try {
-        await companyDetails.deleteOne({ _id: req.params.id });
+        const result = await companyDetails.deleteOne({ _id: req.params.id });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ error: "Company not found" });
+        }
         return res.status(200).json({ message: "Deleted Successfully" });
     } catch (err) {
         return apiErrorHandler(err, res);

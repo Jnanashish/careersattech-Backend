@@ -45,14 +45,26 @@ app.use(
 
 app.use(helmet());
 
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
+const readLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests, please try again later" },
+});
+
+const writeLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
     max: 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "Too many requests, please try again later" },
 });
-app.use("/api", limiter);
+
+app.use("/api", (req, res, next) => {
+    if (req.method === "GET") return readLimiter(req, res, next);
+    return writeLimiter(req, res, next);
+});
 
 app.use(
     fileUpload({

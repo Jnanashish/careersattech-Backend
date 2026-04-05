@@ -57,7 +57,7 @@ exports.getJobs = async (req, res) => {
     }
 
     if (!!query) {
-        const queryArray = query.split(" ");
+        const queryArray = query.split(" ").slice(0, 5);
         const queryConditions = queryArray.map((word) => ({ title: { $regex: escapeRegex(word), $options: "i" } }));
         conditions.$or = queryConditions;
     }
@@ -71,6 +71,20 @@ exports.getJobs = async (req, res) => {
     }
 
     try {
+        // When filtering is enabled, apply isActive + expiresAt at DB level
+        // so pagination and count are consistent
+        if (parseInt(filterData)) {
+            conditions.isActive = true;
+            const expiryFilter = { $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gte: new Date() } }] };
+            if (conditions.$or) {
+                // query search already set $or for title matching — combine with $and
+                conditions.$and = [{ $or: conditions.$or }, expiryFilter];
+                delete conditions.$or;
+            } else {
+                Object.assign(conditions, expiryFilter);
+            }
+        }
+
         let dbQuery = Jobdesc.find(conditions)
             .populate({
                 path: "company",
@@ -108,10 +122,14 @@ exports.deleteJobById = async (req, res) => {
             });
         }
         // Remove the job id from the listed job field of company schema
-        const company = await CompanyLogo.findById(deletedJob?.company);
-        if (!!company) {
-            company.listedJobs = company.listedJobs.filter((jobId) => jobId.toString() !== req.params.id);
-            await company.save();
+        try {
+            const company = await CompanyLogo.findById(deletedJob?.company);
+            if (!!company) {
+                company.listedJobs = company.listedJobs.filter((jobId) => jobId.toString() !== req.params.id);
+                await company.save();
+            }
+        } catch (companyErr) {
+            console.error("Failed to update company after job deletion:", companyErr);
         }
 
         return res.status(200).json({
@@ -232,10 +250,17 @@ exports.addJobs = async (req, res) => {
             if (!allowedTypes.includes(file.mimetype)) {
                 return res.status(400).json({ error: "Invalid file type. Allowed: jpeg, png, webp, svg" });
             }
+            if (!file.tempFilePath || !fs.existsSync(file.tempFilePath)) {
+                return res.status(400).json({ error: "Upload failed — temp file not found" });
+            }
             const result = await cloudinary.uploader.upload(file.tempFilePath);
-            fs.unlink(file.tempFilePath, () => {});
+            fs.unlink(file.tempFilePath, (err) => {
+                if (err) console.error("Failed to delete temp file:", err);
+            });
             job.imagePath = result.secure_url;
         }
+
+        await job.save();
 
         if (companyId) {
             await CompanyLogo.updateOne(
@@ -243,8 +268,6 @@ exports.addJobs = async (req, res) => {
                 { $addToSet: { listedJobs: job._id } }
             );
         }
-
-        await job.save();
         return res.status(201).json({
             message: "Data added successfully",
         });

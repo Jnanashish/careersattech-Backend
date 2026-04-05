@@ -17,8 +17,13 @@ exports.getPosterLink = async (req, res) => {
         if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
             return res.status(400).json({ error: "Invalid file type. Allowed: jpeg, png, webp, svg" });
         }
+        if (!file.tempFilePath || !fs.existsSync(file.tempFilePath)) {
+            return res.status(400).json({ error: "Upload failed — temp file not found" });
+        }
         const result = await cloudinary2.uploader.upload(file.tempFilePath);
-        fs.unlink(file.tempFilePath, () => {});
+        fs.unlink(file.tempFilePath, (err) => {
+            if (err) console.error("Failed to delete temp file:", err);
+        });
         return res.status(201).json({
             url: result.secure_url,
         });
