@@ -78,8 +78,8 @@ app.use(express.json({ limit: "1mb" }));
 
 app.use("/api", jobdetailsRoutes);
 app.use("/api", companydetailsRoutes);
-app.use("/api", scraperAdminRoutes);
 app.use("/api", analyticsRoutes);
+app.use("/api", scraperAdminRoutes);
 
 const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {

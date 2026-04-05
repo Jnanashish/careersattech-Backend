@@ -104,4 +104,49 @@ function escapeRegex(str) {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-module.exports = { ingest, generateFingerprint };
+async function filterKnownUrls(urls) {
+    if (!urls.length) return new Set();
+
+    const [stagingBySource, liveByLink] = await Promise.all([
+        StagingJob.find({ sourceUrl: { $in: urls } }, { sourceUrl: 1 }).lean(),
+        Jobdesc.find({ link: { $in: urls } }, { link: 1 }).lean(),
+    ]);
+
+    const known = new Set();
+    stagingBySource.forEach((j) => known.add(j.sourceUrl));
+    liveByLink.forEach((j) => known.add(j.link));
+    return known;
+}
+
+async function filterKnownJobs(jobs) {
+    if (!jobs.length) return { filtered: jobs, skipped: 0 };
+
+    const sourceUrls = jobs.map((j) => j.sourceUrl).filter(Boolean);
+    const companyUrls = jobs.map((j) => j.companyPageUrl).filter(Boolean);
+    const allUrls = [...new Set([...sourceUrls, ...companyUrls])];
+
+    const [knownUrls, stagingByLink] = await Promise.all([
+        filterKnownUrls(allUrls),
+        companyUrls.length
+            ? StagingJob.find({ "jobData.link": { $in: companyUrls } }, { "jobData.link": 1 }).lean()
+            : [],
+    ]);
+
+    stagingByLink.forEach((j) => {
+        if (j.jobData?.link) knownUrls.add(j.jobData.link);
+    });
+
+    const filtered = jobs.filter((j) => {
+        if (knownUrls.has(j.sourceUrl)) return false;
+        if (j.companyPageUrl && knownUrls.has(j.companyPageUrl)) return false;
+        return true;
+    });
+
+    const skipped = jobs.length - filtered.length;
+    if (skipped > 0) {
+        console.log(`[Dedup] Pre-filter: skipped ${skipped} already-known jobs out of ${jobs.length}`);
+    }
+    return { filtered, skipped };
+}
+
+module.exports = { ingest, generateFingerprint, filterKnownUrls, filterKnownJobs };

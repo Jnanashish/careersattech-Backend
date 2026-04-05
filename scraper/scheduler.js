@@ -2,7 +2,7 @@ const cron = require("node-cron");
 const { randomUUID } = require("crypto");
 const { scrapeAll } = require("./scraper");
 const { transformBatch } = require("./transformer");
-const { ingest } = require("./ingester");
+const { ingest, filterKnownJobs } = require("./ingester");
 const { getProvider } = require("./providers");
 const ScrapeLog = require("./models/ScrapeLog");
 const notifier = require("./notifier");
@@ -51,8 +51,21 @@ async function runPipeline(trigger = "manual") {
                 continue;
             }
 
+            // Pre-filter: skip jobs already in staging or live (saves LLM calls)
+            const { filtered: newJobs, skipped: preSkipped } = await filterKnownJobs(result.jobs);
+            adapterLog.jobsSkipped += preSkipped;
+            totalSkipped += preSkipped;
+
+            if (newJobs.length === 0) {
+                console.log(`[Scheduler] ${result.adapter}: all jobs already known, skipping transform`);
+                adapterLog.status = "success";
+                adaptersSucceeded.push(result.adapter);
+                adapterResults.push(adapterLog);
+                continue;
+            }
+
             // Transform
-            const { results: transformed, errors: transformErrors } = await transformBatch(result.jobs);
+            const { results: transformed, errors: transformErrors } = await transformBatch(newJobs);
             adapterLog.jobsTransformed = transformed.length;
             adapterLog.errors.push(...transformErrors);
 

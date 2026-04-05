@@ -9,7 +9,7 @@ const {
     getJobsByCategory,
 } = require("../controllers/analytics.controllers");
 
-router.use(requireAuth);
+router.use("/analytics", requireAuth);
 
 router.get("/analytics/summary", getSummary);
 router.get("/analytics/jobs-over-time", getJobsOverTime);

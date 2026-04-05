@@ -1,6 +1,7 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const adapters = require("./adapters");
+const { filterKnownUrls } = require("./ingester");
 
 const USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -113,7 +114,15 @@ async function scrapeOne(adapter, options = {}) {
         );
     }
 
-    console.log(`[Scraper] ${adapter.displayName}: found ${allLinks.length} job links`);
+    // Skip pages already in staging or live
+    const knownUrls = await filterKnownUrls(allLinks);
+    if (knownUrls.size > 0) {
+        const before = allLinks.length;
+        allLinks = allLinks.filter((url) => !knownUrls.has(url));
+        console.log(`[Scraper] ${adapter.displayName}: skipped ${before - allLinks.length} already-known URLs`);
+    }
+
+    console.log(`[Scraper] ${adapter.displayName}: found ${allLinks.length} new job links (${stats.jobLinksFound} total)`);
 
     // Step 2: Visit each sub-page and extract data
     const jobs = [];

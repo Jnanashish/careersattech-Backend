@@ -8,7 +8,7 @@ module.exports = {
         jobLinks: {
             selector: "a.fh-job-row",
             attribute: "href",
-            limit: 2,
+            limit: 10,
         },
         companyUrl: {
             selector: 'a[target="_blank"][rel="noopener"]:contains("Apply Now")',
