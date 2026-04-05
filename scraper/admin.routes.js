@@ -10,15 +10,6 @@ const { scrapeOne, getAdapterByName } = require("./scraper");
 // Auth middleware — checks x-admin-secret header
 function requireAdminSecret(req, res, next) {
     const secret = req.headers["x-admin-secret"];
-    console.log("[DEBUG admin-auth]", {
-        hasHeader: !!secret,
-        headerLength: secret?.length,
-        headerPrefix: secret?.slice(0, 8),
-        envSet: !!process.env.ADMIN_SECRET,
-        envLength: process.env.ADMIN_SECRET?.length,
-        envPrefix: process.env.ADMIN_SECRET?.slice(0, 8),
-        match: secret === process.env.ADMIN_SECRET,
-    });
     if (!secret || secret !== process.env.ADMIN_SECRET) {
         return res.status(401).json({ error: "Unauthorized" });
     }
