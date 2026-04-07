@@ -61,9 +61,13 @@ exports.getJobs = async (req, res) => {
     }
 
     if (!!query) {
-        const queryArray = query.split(" ").slice(0, 5);
-        const queryConditions = queryArray.map((word) => ({ title: { $regex: escapeRegex(word), $options: "i" } }));
-        conditions.$or = queryConditions;
+        const escapedQuery = escapeRegex(query);
+        const queryRegex = { $regex: escapedQuery, $options: "i" };
+        conditions.$or = [
+            { companyName: queryRegex },
+            { title: queryRegex },
+            { role: queryRegex },
+        ];
     }
 
     if (!!location) {
