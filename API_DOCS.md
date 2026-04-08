@@ -558,3 +558,298 @@ All endpoints return errors in this format:
 | `linkedinPageLink` | string | LinkedIn page URL |
 | `isPromoted` | boolean | Whether company is promoted |
 | `listedJobs` | array | Array of linked job objects/IDs |
+
+---
+
+## Blog Endpoints
+
+### Authentication
+
+All **admin blog endpoints** (`/api/admin/*`) require authentication via Firebase token or API key (same as other admin endpoints). **Public blog endpoints** (`/api/blogs/*`) require no authentication.
+
+### Public Endpoints
+
+#### List Published Blogs
+
+```
+GET /api/blogs?page=1&size=10&category=Career+Tips&tag=react&search=javascript
+```
+
+**Query Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `page` | number | 1 | Page number |
+| `size` | number | 20 | Items per page (max 100) |
+| `category` | string | — | Filter by category |
+| `tag` | string | — | Filter by tag |
+| `search` | string | — | Search in title |
+
+**Response (200):**
+```json
+{
+  "data": [
+    {
+      "_id": "...",
+      "title": "Getting Started with React",
+      "slug": "getting-started-with-react",
+      "excerpt": "A beginner's guide to React...",
+      "coverImage": { "url": "...", "alt": "...", "blurhash": "..." },
+      "author": { "name": "Admin" },
+      "category": "Tech Trends",
+      "tags": ["react", "javascript"],
+      "publishedAt": "2026-04-08T10:00:00Z",
+      "readingTime": 5,
+      "views": 42
+    }
+  ],
+  "totalCount": 15,
+  "page": 1,
+  "size": 10
+}
+```
+
+**Cache:** `s-maxage=60, stale-while-revalidate=300`
+
+---
+
+#### Get Blog by Slug
+
+```
+GET /api/blogs/:slug
+```
+
+**Response (200):**
+```json
+{
+  "data": {
+    "_id": "...",
+    "title": "Getting Started with React",
+    "slug": "getting-started-with-react",
+    "excerpt": "...",
+    "content": "# Getting Started...",
+    "contentHtml": "<h1>Getting Started...</h1>...",
+    "coverImage": { "url": "...", "alt": "...", "width": 1200, "height": 630, "blurhash": "..." },
+    "author": { "name": "Admin", "bio": "...", "avatar": "..." },
+    "category": "Tech Trends",
+    "tags": ["react"],
+    "seo": { "metaTitle": "...", "metaDescription": "..." },
+    "tableOfContents": [{ "id": "introduction", "text": "Introduction", "level": 2 }],
+    "readingTime": 5,
+    "wordCount": 1000,
+    "views": 43,
+    "publishedAt": "2026-04-08T10:00:00Z",
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+}
+```
+
+**Cache:** `s-maxage=60, stale-while-revalidate=300`. View count is incremented asynchronously.
+
+---
+
+#### Related Blogs
+
+```
+GET /api/blogs/related/:slug
+```
+
+Returns up to 5 related published posts ranked by tag/category overlap.
+
+**Response (200):**
+```json
+{ "data": [ { "title": "...", "slug": "...", "excerpt": "...", "coverImage": {...}, ... } ] }
+```
+
+---
+
+#### Sitemap Data
+
+```
+GET /api/blogs/sitemap
+```
+
+Returns all published blog slugs and their last-updated timestamps for sitemap generation.
+
+**Response (200):**
+```json
+{ "data": [ { "slug": "getting-started-with-react", "updatedAt": "2026-04-08T10:00:00Z" } ] }
+```
+
+**Cache:** `s-maxage=3600, stale-while-revalidate=86400`
+
+---
+
+#### RSS Feed
+
+```
+GET /api/blogs/rss
+```
+
+Returns RSS 2.0 XML feed of the 50 most recent published posts.
+
+**Content-Type:** `application/rss+xml`
+**Cache:** `s-maxage=3600, stale-while-revalidate=86400`
+
+---
+
+### Admin Endpoints
+
+All require `Authorization: Bearer <token>` or `x-api-key: <key>`.
+
+#### Create Blog Draft
+
+```
+POST /api/admin/blogs
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "title": "Getting Started with React",
+  "content": "# Introduction\n\nReact is a JavaScript library...",
+  "category": "Tech Trends",
+  "author": { "name": "Admin" },
+  "tags": ["react", "javascript"],
+  "excerpt": "A beginner's guide to React...",
+  "coverImage": { "url": "https://...", "alt": "React logo" },
+  "seo": {
+    "metaTitle": "React Guide for Beginners",
+    "metaDescription": "Learn React from scratch..."
+  }
+}
+```
+
+Required fields: `title`, `content`, `category`, `author.name`
+
+**Response (201):**
+```json
+{ "message": "Blog draft created", "data": { "_id": "...", "slug": "getting-started-with-react" } }
+```
+
+The processing pipeline automatically:
+- Generates a unique slug from the title
+- Converts markdown to sanitized HTML
+- Extracts table of contents from H2/H3 headings
+- Calculates word count and reading time
+- Re-uploads external images to Cloudinary
+- Auto-fills SEO fields if left empty
+
+---
+
+#### List Blogs (Admin)
+
+```
+GET /api/admin/blogs?page=1&size=20&status=draft&search=react
+```
+
+Returns blogs of any status (draft, published, scheduled, archived). Content body is excluded for performance.
+
+---
+
+#### Get Blog (Admin)
+
+```
+GET /api/admin/blogs/:id
+```
+
+Returns full blog document including raw markdown `content`.
+
+---
+
+#### Update Blog
+
+```
+PATCH /api/admin/blogs/:id
+Content-Type: application/json
+
+{ "title": "Updated Title", "tags": ["react", "tutorial"] }
+```
+
+Any field from the create schema can be updated. If `content` or `title` changes, the processing pipeline re-runs (HTML, TOC, reading time, slug if title changed).
+
+---
+
+#### Delete (Archive) Blog
+
+```
+DELETE /api/admin/blogs/:id
+```
+
+Soft-deletes by setting `status: "archived"`. The post is hidden from public endpoints.
+
+**Response (200):**
+```json
+{ "message": "Blog archived" }
+```
+
+---
+
+#### Publish / Schedule Blog
+
+```
+POST /api/admin/blogs/:id/publish
+Content-Type: application/json
+
+{}
+```
+
+Publishes immediately. Sets `publishedAt` on first publish (never overwritten on subsequent publishes).
+
+To schedule for a future date:
+```json
+{ "scheduledFor": "2026-04-15T10:00:00Z" }
+```
+
+A background cron job checks every minute and flips `scheduled → published` when the time arrives.
+
+---
+
+#### Upload Image
+
+```
+POST /api/admin/upload
+Content-Type: multipart/form-data
+Authorization: Bearer <token>
+
+image: <file>
+```
+
+Max file size: 5MB. Allowed types: JPEG, PNG, WebP, SVG, GIF. Images are automatically converted to WebP.
+
+**Response (200):**
+```json
+{
+  "url": "https://res.cloudinary.com/..../blog/image.webp",
+  "width": 1200,
+  "height": 630,
+  "blurhash": "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+}
+```
+
+---
+
+### Blog Data Model
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | string | Unique identifier |
+| `title` | string | Blog post title |
+| `slug` | string | URL-safe slug (unique) |
+| `excerpt` | string | Short description (150-160 chars) |
+| `content` | string | Raw markdown |
+| `contentHtml` | string | Pre-rendered HTML |
+| `coverImage` | object | `{ url, alt, width, height, blurhash }` |
+| `author` | object | `{ name, avatar, bio, social }` |
+| `category` | string | Blog category |
+| `tags` | string[] | Tag list |
+| `seo` | object | `{ metaTitle, metaDescription, canonicalUrl, ogImage, keywords, noindex }` |
+| `readingTime` | number | Estimated reading time in minutes |
+| `wordCount` | number | Word count |
+| `tableOfContents` | array | `[{ id, text, level }]` extracted from headings |
+| `status` | string | `draft`, `scheduled`, `published`, `archived` |
+| `publishedAt` | date | First publish timestamp |
+| `scheduledFor` | date | Scheduled publish time |
+| `views` | number | View count |
+| `createdAt` | date | Auto-generated |
+| `updatedAt` | date | Auto-generated |
