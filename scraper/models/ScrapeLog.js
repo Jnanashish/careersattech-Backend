@@ -10,7 +10,7 @@ const scrapeLogSchema = new mongoose.Schema(
         adapters: [
             {
                 name: String,
-                status: { type: String, enum: ["success", "partial", "failed"] },
+                status: { type: String, enum: ["success", "partial", "failed", "stopped"] },
                 jobLinksFound: Number,
                 jobsFetched: Number,
                 jobsTransformed: Number,
