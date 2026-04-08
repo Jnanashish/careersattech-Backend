@@ -6,6 +6,7 @@ const ScrapeLog = require("./models/ScrapeLog");
 const Jobdesc = require("../model/jobs.schema");
 const { runPipeline } = require("./scheduler");
 const { scrapeOne, getAdapterByName } = require("./scraper");
+const { requestStop, isStopRequested, getAll: getStopFlags } = require("./stopFlags");
 
 // Auth middleware — checks x-admin-secret header
 function requireAdminSecret(req, res, next) {
@@ -206,7 +207,7 @@ router.get("/admin/scrape/health", async (req, res) => {
             lastRun: latestLog.startedAt,
         }));
 
-        res.json({ data: health, lastRunId: latestLog.runId });
+        res.json({ data: health, lastRunId: latestLog.runId, activeStopRequests: getStopFlags() });
     } catch (err) {
         return res.status(500).json({ error: err.message });
     }
@@ -232,6 +233,30 @@ router.post("/admin/scrape/test-adapter/:name", async (req, res) => {
                 rawContentSnippet: j.pageContent?.slice(0, 500),
             })),
             errors: stats.errors,
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /admin/scrape/stop/:adapterName — request stop of running adapter scrape
+router.post("/admin/scrape/stop/:adapterName", async (req, res) => {
+    try {
+        const adapterName = req.params.adapterName;
+
+        const adapter = getAdapterByName(adapterName);
+        if (!adapter) {
+            return res.status(404).json({ error: `Adapter "${adapterName}" not found` });
+        }
+
+        requestStop(adapterName);
+
+        console.log(`[Admin] Stop requested for adapter: ${adapterName}`);
+
+        res.json({
+            success: true,
+            message: `Scraping stopped for ${adapterName}`,
+            adapter: adapterName,
         });
     } catch (err) {
         return res.status(500).json({ error: err.message });

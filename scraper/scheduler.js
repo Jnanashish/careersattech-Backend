@@ -6,6 +6,7 @@ const { ingest, filterKnownJobs } = require("./ingester");
 const { getProvider } = require("./providers");
 const ScrapeLog = require("./models/ScrapeLog");
 const notifier = require("./notifier");
+const { isStopRequested, clearStop } = require("./stopFlags");
 
 async function runPipeline(trigger = "manual") {
     const runId = randomUUID();
@@ -25,6 +26,23 @@ async function runPipeline(trigger = "manual") {
         const scrapeResults = await scrapeAll();
 
         for (const result of scrapeResults) {
+            // Check if stop was requested for this adapter
+            if (isStopRequested(result.adapter) || result.stats.stopped || result.stats.status === "stopped") {
+                console.log(`[Scheduler] ${result.adapter}: stop requested, skipping transform/ingest`);
+                adapterResults.push({
+                    name: result.adapter,
+                    jobLinksFound: result.stats.jobLinksFound || 0,
+                    jobsFetched: result.stats.jobsFetched || 0,
+                    jobsTransformed: 0,
+                    jobsIngested: 0,
+                    jobsSkipped: 0,
+                    errors: [],
+                    durationMs: result.stats.durationMs || 0,
+                    status: "stopped",
+                });
+                continue;
+            }
+
             const adapterStart = Date.now();
             const adapterLog = {
                 name: result.adapter,
@@ -117,6 +135,13 @@ async function runPipeline(trigger = "manual") {
             adaptersFailed,
         },
     });
+
+    // Clear stop flags for adapters that were stopped in this run
+    for (const result of adapterResults) {
+        if (result.status === "stopped") {
+            clearStop(result.name);
+        }
+    }
 
     console.log(
         `[Scheduler] Run ${runId} complete: ${totalNew} new, ${totalSkipped} skipped, ${totalErrors} errors`

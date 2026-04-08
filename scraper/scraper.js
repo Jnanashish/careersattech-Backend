@@ -2,6 +2,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const adapters = require("./adapters");
 const { filterKnownUrls } = require("./ingester");
+const { isStopRequested } = require("./stopFlags");
 
 const USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -61,6 +62,11 @@ async function fetchPage(url, headers = {}) {
 }
 
 async function scrapeOne(adapter, options = {}) {
+    if (isStopRequested(adapter.name)) {
+        console.log(`[Scraper] ${adapter.displayName}: stop requested, skipping`);
+        return { jobs: [], stats: { jobLinksFound: 0, jobsFetched: 0, errors: [], stopped: true } };
+    }
+
     if (typeof adapter.scrape === "function") {
         console.log(`[Scraper] Starting ${adapter.displayName} (custom scrape)`);
         return adapter.scrape(options);
@@ -84,6 +90,11 @@ async function scrapeOne(adapter, options = {}) {
         : 1;
 
     while (currentUrl && pagesScraped < maxPages) {
+        if (isStopRequested(adapter.name)) {
+            console.log(`[Scraper] ${adapter.displayName}: stop requested, aborting page fetch`);
+            return { jobs: [], stats: { ...stats, stopped: true } };
+        }
+
         const html = await fetchPage(currentUrl, adapter.options.headers);
         const $ = cheerio.load(html);
 
@@ -128,6 +139,11 @@ async function scrapeOne(adapter, options = {}) {
     const jobs = [];
 
     for (const link of allLinks) {
+        if (isStopRequested(adapter.name)) {
+            console.log(`[Scraper] ${adapter.displayName}: stop requested, aborting job detail fetch`);
+            return { jobs: [], stats: { ...stats, stopped: true } };
+        }
+
         try {
             await delay(adapter.options.delayMs);
 
@@ -209,6 +225,22 @@ async function scrapeAll() {
     const results = [];
 
     for (const adapter of adapters) {
+        if (isStopRequested(adapter.name)) {
+            console.log(`[Scraper] ${adapter.name}: stop requested, skipping`);
+            results.push({
+                adapter: adapter.name,
+                jobs: [],
+                stats: {
+                    jobLinksFound: 0,
+                    jobsFetched: 0,
+                    errors: [],
+                    durationMs: 0,
+                    status: "stopped",
+                },
+            });
+            continue;
+        }
+
         const startTime = Date.now();
         try {
             const { jobs, stats } = await scrapeOne(adapter);
