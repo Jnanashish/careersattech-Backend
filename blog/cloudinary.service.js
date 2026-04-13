@@ -1,10 +1,10 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const cloudinary = require("cloudinary").v2;
 const axios = require("axios");
 const sharp = require("sharp");
 const { encode } = require("blurhash");
-const { v4: uuidv4 } = require("uuid");
 
 // Blog images use the same Cloudinary account, uploaded to a blog/ folder
 cloudinary.config({
@@ -73,7 +73,7 @@ async function uploadImage(filePath, options = {}) {
  * @returns {Promise<{url: string, width: number, height: number}>}
  */
 async function downloadAndReupload(externalUrl) {
-    const tmpFile = path.join("/tmp", `blog-${uuidv4()}`);
+    const tmpFile = path.join("/tmp", `blog-${crypto.randomUUID()}`);
     try {
         const response = await axios.get(externalUrl, {
             responseType: "arraybuffer",
