@@ -26,9 +26,9 @@ exports.addCompanyDetails = async (req, res) => {
 };
 
 // -----------------------------------------------------------
-// get company details by id or company name return only one company details
+// get company details by id, company name, or paginated list
 exports.getCompanyDetails = async (req, res) => {
-    const { id, companyname } = req.query;
+    const { id, companyname, search, page, limit } = req.query;
     let query = {};
 
     if (!!id) {
@@ -36,23 +36,36 @@ exports.getCompanyDetails = async (req, res) => {
             return res.status(400).json({ error: "Invalid company ID" });
         }
         query = { _id: id };
-    } else if (!!companyname) {
-        query = { companyName: { $regex: escapeRegex(companyname), $options: "i" } };
+    } else if (companyname || search) {
+        const term = companyname || search;
+        query = { companyName: { $regex: escapeRegex(term), $options: "i" } };
     }
 
     try {
-        let dbQuery = companyDetails
-            .find(query)
-            .populate({ path: "listedJobs" })
-            .sort({ _id: -1 });
+        const pageNum = Math.max(parseInt(page) || 1, 1);
+        const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
+        const skip = (pageNum - 1) * pageSize;
 
-        // Prevent full table scan when no filters provided
-        if (!id && !companyname) {
-            dbQuery = dbQuery.limit(50);
-        }
+        const [result, totalCount] = await Promise.all([
+            companyDetails
+                .find(query)
+                .populate({ path: "listedJobs" })
+                .sort({ _id: -1 })
+                .skip(skip)
+                .limit(pageSize),
+            companyDetails.countDocuments(query),
+        ]);
 
-        const result = await dbQuery;
-        return res.status(200).send(result || {});
+        const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+        return res.status(200).json({
+            data: result,
+            pagination: {
+                currentPage: pageNum,
+                totalPages,
+                totalCount,
+                pageSize,
+            },
+        });
     } catch (err) {
         console.error("Company API error:", err);
         return res.status(500).json({ error: "Internal server error" });
