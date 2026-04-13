@@ -30,6 +30,9 @@ const companydetailsRoutes = require("./routes/company.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
 const scraperAdminRoutes = require("./scraper/admin.routes");
 const scheduler = require("./scraper/scheduler");
+const blogRoutes = require("./blog/blog.routes");
+const blogAdminRoutes = require("./blog/blog.admin.routes");
+const blogScheduler = require("./blog/blog.scheduler");
 
 const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(",")
@@ -80,9 +83,12 @@ app.use("/api", jobdetailsRoutes);
 app.use("/api", companydetailsRoutes);
 app.use("/api", analyticsRoutes);
 app.use("/api", scraperAdminRoutes);
+app.use("/api", blogRoutes);
+app.use("/api", blogAdminRoutes);
 
 const PORT = process.env.PORT || 5002;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     scheduler.init();
+    blogScheduler.init();
 });
