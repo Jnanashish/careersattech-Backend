@@ -78,7 +78,9 @@ describe("GET /api/companydetails/get", () => {
         const res = await request(app).get("/api/companydetails/get");
 
         expect(res.status).toBe(200);
-        expect(res.body).toHaveLength(2);
+        expect(res.body.data).toHaveLength(2);
+        expect(res.body.pagination).toBeDefined();
+        expect(res.body.pagination.totalCount).toBe(2);
     });
 
     it("should return company by id", async () => {
@@ -87,8 +89,8 @@ describe("GET /api/companydetails/get", () => {
         const res = await request(app).get(`/api/companydetails/get?id=${company._id}`);
 
         expect(res.status).toBe(200);
-        expect(res.body).toHaveLength(1);
-        expect(res.body[0].companyName).toBe("FindById");
+        expect(res.body.data).toHaveLength(1);
+        expect(res.body.data[0].companyName).toBe("FindById");
     });
 
     it("should search company by name (case-insensitive regex)", async () => {
@@ -98,8 +100,8 @@ describe("GET /api/companydetails/get", () => {
         const res = await request(app).get("/api/companydetails/get?companyname=google");
 
         expect(res.status).toBe(200);
-        expect(res.body).toHaveLength(1);
-        expect(res.body[0].companyName).toBe("Google");
+        expect(res.body.data).toHaveLength(1);
+        expect(res.body.data[0].companyName).toBe("Google");
     });
 
     it("should return partial name matches", async () => {
@@ -109,7 +111,7 @@ describe("GET /api/companydetails/get", () => {
         const res = await request(app).get("/api/companydetails/get?companyname=Google");
 
         expect(res.status).toBe(200);
-        expect(res.body).toHaveLength(2);
+        expect(res.body.data).toHaveLength(2);
     });
 
     it("should populate listedJobs in company response", async () => {
@@ -124,8 +126,8 @@ describe("GET /api/companydetails/get", () => {
         const res = await request(app).get(`/api/companydetails/get?id=${company._id}`);
 
         expect(res.status).toBe(200);
-        expect(res.body[0].listedJobs).toHaveLength(1);
-        expect(res.body[0].listedJobs[0].title).toBe("Test Job");
+        expect(res.body.data[0].listedJobs).toHaveLength(1);
+        expect(res.body.data[0].listedJobs[0].title).toBe("Test Job");
     });
 
     it("should return sorted by _id descending (newest first)", async () => {
@@ -134,14 +136,41 @@ describe("GET /api/companydetails/get", () => {
 
         const res = await request(app).get("/api/companydetails/get");
 
-        expect(res.body[0].companyName).toBe("Second");
-        expect(res.body[1].companyName).toBe("First");
+        expect(res.body.data[0].companyName).toBe("Second");
+        expect(res.body.data[1].companyName).toBe("First");
     });
 
-    it("should return 500 for invalid id", async () => {
+    it("should return 400 for invalid id", async () => {
         const res = await request(app).get("/api/companydetails/get?id=invalid");
 
-        expect(res.status).toBe(500);
+        expect(res.status).toBe(400);
+    });
+
+    it("should paginate results correctly", async () => {
+        await createCompany({ companyName: "Page1" });
+        await createCompany({ companyName: "Page2" });
+        await createCompany({ companyName: "Page3" });
+
+        const res = await request(app).get("/api/companydetails/get?page=1&limit=2");
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toHaveLength(2);
+        expect(res.body.pagination.currentPage).toBe(1);
+        expect(res.body.pagination.totalPages).toBe(2);
+        expect(res.body.pagination.totalCount).toBe(3);
+        expect(res.body.pagination.pageSize).toBe(2);
+    });
+
+    it("should search companies using search param", async () => {
+        await createCompany({ companyName: "Amazon" });
+        await createCompany({ companyName: "Apple" });
+        await createCompany({ companyName: "Netflix" });
+
+        const res = await request(app).get("/api/companydetails/get?search=a");
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toHaveLength(2);
+        expect(res.body.pagination.totalCount).toBe(2);
     });
 });
 

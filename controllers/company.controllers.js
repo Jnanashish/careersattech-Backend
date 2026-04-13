@@ -56,11 +56,12 @@ exports.getCompanyDetails = async (req, res) => {
             companyDetails.countDocuments(query),
         ]);
 
+        const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
         return res.status(200).json({
             data: result,
             pagination: {
                 currentPage: pageNum,
-                totalPages: Math.ceil(totalCount / pageSize),
+                totalPages,
                 totalCount,
                 pageSize,
             },

@@ -29,7 +29,7 @@ Build a **Company Management** page for the CareersAtTech admin panel. This page
 | `page` | number | 1 | Page number (1-based) |
 | `limit` | number | 20 | Items per page (max 100) |
 | `search` | string | — | Case-insensitive company name search |
-| `companyname` | string | — | Filter by exact company name (regex) |
+| `companyname` | string | — | Case-insensitive partial match on company name |
 | `id` | string | — | Fetch single company by MongoDB ObjectId |
 
 ### List Response Shape
@@ -87,6 +87,7 @@ Build a **Company Management** page for the CareersAtTech admin panel. This page
 - **Refresh** button — re-fetches current page
 
 **Table Columns:**
+
 | Column | Source | Notes |
 |--------|--------|-------|
 | Logo | `smallLogo` | Render as 40x40 image, fallback to initials avatar |
@@ -116,6 +117,7 @@ Build a **Company Management** page for the CareersAtTech admin panel. This page
 **Trigger:** "Add Company" button (create mode) or row Edit button (edit mode).
 
 **Form Fields:**
+
 | Field | Input Type | Validation |
 |-------|-----------|------------|
 | Company Name | Text input | Required, min 2 chars |
@@ -152,7 +154,7 @@ Build a **Company Management** page for the CareersAtTech admin panel. This page
 
 ## State Management
 
-```
+```js
 companyState = {
   companies: [],          // current page data
   pagination: {
