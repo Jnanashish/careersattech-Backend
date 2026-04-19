@@ -1,11 +1,22 @@
 const mongoose = require("mongoose");
 
+// Normalize jdpage: admin UI sends a boolean toggle, but legacy callers
+// (FormData, scraper payloads) may send strings or URLs. Treat anything that
+// isn't explicitly "off" as on — i.e. show the JD page redirect.
+function coerceJdpage(v) {
+    if (v === true || v === false) return v;
+    if (v === null || v === undefined) return undefined; // let schema default fill in
+    const s = String(v).trim().toLowerCase();
+    if (s === "" || s === "false" || s === "0" || s === "no") return false;
+    return true;
+}
+
 // schema for job description
 const jobdetailsSchema = new mongoose.Schema(
     {
         title: { type: String, required: true },
         link: { type: String, required: true },
-        jdpage: { type: String },
+        jdpage: { type: Boolean, default: true, set: coerceJdpage },
         salary: { type: String },
         batch: { type: String },
         degree: { type: String },

@@ -1,5 +1,15 @@
 const mongoose = require("mongoose");
 
+// Mirror the main Jobdesc normalizer so AI-emitted nulls or stringy values
+// can't slip through into staging and then into the live collection.
+function coerceJdpage(v) {
+    if (v === true || v === false) return v;
+    if (v === null || v === undefined) return undefined;
+    const s = String(v).trim().toLowerCase();
+    if (s === "" || s === "false" || s === "0" || s === "no") return false;
+    return true;
+}
+
 const stagingJobSchema = new mongoose.Schema(
     {
         status: {
@@ -16,7 +26,7 @@ const stagingJobSchema = new mongoose.Schema(
         jobData: {
             title: String,
             link: String,
-            jdpage: String,
+            jdpage: { type: Boolean, default: true, set: coerceJdpage },
             salary: String,
             batch: String,
             degree: String,

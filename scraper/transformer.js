@@ -10,7 +10,6 @@ OUTPUT JSON KEYS (use ONLY these keys):
 {
   "title": "string (required) — clean job title",
   "link": "string (required) — company careers page apply URL, NOT the aggregator URL",
-  "jdpage": "string or null — job description page URL if different from link",
   "companyName": "string (required) — company name",
   "role": "string — specific role, e.g. 'Software Engineer', 'Data Analyst'",
   "jobdesc": "string (required) — rewritten job description, 100-160 words. MUST start with '[Company name] is hiring' or '[Company name] is seeking'. Write in simple, clear, SEO-friendly language. No redundancy. Fresher-friendly tone.",

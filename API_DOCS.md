@@ -155,7 +155,7 @@ x-api-key: <your-api-key>
 | `isFeaturedJob` | boolean | No | Whether job is featured (default: `false`) |
 | `priority` | number | No | Display priority, higher = shown first (default: `1`) |
 | `benefits` | string | No | Job benefits |
-| `jdpage` | string | No | JD page link |
+| `jdpage` | boolean | No | Whether the public site should redirect to the in-app JD page (default: `true`). Stringy legacy values like `"true"`/`"false"` are also accepted and coerced. |
 | `jdbanner` | string | No | Banner image URL |
 | `photo` | file | No | Image file (multipart). Allowed: jpeg, png, webp, svg. Max 5MB. |
 

@@ -81,8 +81,14 @@ router.post("/admin/scrape/staging/:id/approve", async (req, res) => {
             return res.status(400).json({ error: `Job already ${staging.status}` });
         }
 
-        // Allow overrides from request body
-        const jobData = { ...staging.jobData.toObject(), ...req.body.overrides };
+        // Allow overrides from request body. Scraper-authored staging rows
+        // often carry jdpage:null (the AI can't determine a JD URL) — treat a
+        // missing override as an explicit "show JD page".
+        const overrides = req.body.overrides || {};
+        const jobData = { ...staging.jobData.toObject(), ...overrides };
+        if (jobData.jdpage === undefined || jobData.jdpage === null) {
+            jobData.jdpage = true;
+        }
 
         const newJob = new Jobdesc(jobData);
         await newJob.save();
@@ -126,6 +132,7 @@ router.post("/admin/scrape/staging/approve-bulk", async (req, res) => {
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ error: "ids array required" });
         }
+        const overrides = req.body.overrides || {};
 
         let approved = 0;
         let failed = 0;
@@ -146,7 +153,12 @@ router.post("/admin/scrape/staging/approve-bulk", async (req, res) => {
                     continue;
                 }
 
-                const newJob = new Jobdesc(staging.jobData.toObject());
+                const jobData = { ...staging.jobData.toObject(), ...overrides };
+                if (jobData.jdpage === undefined || jobData.jdpage === null) {
+                    jobData.jdpage = true;
+                }
+
+                const newJob = new Jobdesc(jobData);
                 await newJob.save();
 
                 staging.status = "approved";
