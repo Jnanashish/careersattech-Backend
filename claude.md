@@ -1,15 +1,34 @@
 # CareersAt.Tech Backend
 
-## Project Overview
-Backend API for careersattech.tech — an Indian tech job portal for freshers.
-Serves job listings, company profiles, filtering/pagination, and an experimental ad system.
+## Repo Purpose (for task delegation)
+This is the **server-side backend API** for careersattech.tech — an Indian tech job portal for freshers.
+Pick this repo for any task involving:
+
+- **Jobs**: CRUD for job listings, filtering, search, pagination, click/apply tracking, featured/priority jobs
+- **Companies**: CRUD for company profiles, logos (small/large), career/LinkedIn page links, job-to-company linking
+- **Job Scraper**: automated scraping of company career pages via provider/adapter architecture, scheduled via `node-cron`, ingestion and transformation pipeline, admin controls to start/stop/monitor scraper runs
+- **Blog system**: markdown-based blog posts with SEO metadata, TOC, cover images (Cloudinary + blurhash), AI-assisted content pipeline (Groq / Google Generative AI), scheduled publishing
+- **Analytics**: endpoints that surface traffic / click metrics for jobs and ads
+- **Image handling**: Cloudinary uploads (dual accounts — jobs vs ads), `sharp` image processing, blurhash generation
+- **Auth & security**: Firebase Admin token verification for admin routes, API-key/bearer auth for write endpoints, Helmet, rate limiting, CORS allowlist, input validation with Zod
+- **API docs** (`API_DOCS.md`) — keep in sync when routes change
+
+Do **NOT** pick this repo for:
+- Frontend / UI work (Next.js / React site lives in a separate repo)
+- Mobile app work
+- Anything unrelated to the careersattech.tech job portal backend
 
 ## Stack
-- Runtime: Node.js
-- Framework: Express.js v4.17.1
-- Database: MongoDB (Mongoose v6 ODM)
+- Runtime: Node.js (>=18)
+- Framework: Express.js v4.21
+- Database: MongoDB (Mongoose v8 ODM), `mongodb-memory-server` for tests
 - Image Storage: Cloudinary (dual accounts — one for jobs, one for ads)
-- Auth: None (open API, no auth middleware)
+- Auth: Firebase Admin (admin routes) + API key / bearer token (write endpoints); GET endpoints are public
+- Scheduling: `node-cron` (scraper + blog publisher)
+- AI: `@google/generative-ai`, `groq-sdk` (used in blog content pipeline)
+- Validation: Zod
+- Markdown → HTML: `unified` + `remark` + `rehype` toolchain
+- Testing: Jest + Supertest
 
 ## Project Structure
 ```
