@@ -8,7 +8,11 @@
   "scripts": {
     "test": "jest --forceExit --detectOpenHandles",
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "db:v2:seed": "node ./migration/scripts/seed-v2.js",
+    "db:v2:seed:reset": "node ./migration/scripts/seed-v2.js --reset",
+    "db:v2:verify": "node ./migration/scripts/verify-v2.js",
+    "db:v2:e2e": "node ./migration/scripts/e2e-v2.js"
   },
   "author": "",
   "license": "ISC",
@@ -28,6 +32,7 @@
     "hast-util-to-string": "^3.0.1",
     "helmet": "^8.1.0",
     "mongoose": "^8.9.5",
+    "nanoid": "^5.1.9",
     "node-cron": "^4.2.1",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-prism-plus": "^2.0.2",
@@ -37,6 +42,7 @@
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "sharp": "^0.34.5",
+    "slugify": "^1.6.9",
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "uuid": "^13.0.0",

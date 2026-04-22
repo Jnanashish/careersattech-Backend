@@ -17,7 +17,7 @@ function requireAdminSecret(req, res, next) {
     next();
 }
 
-router.use("/admin", requireAdminSecret);
+router.use("/admin/scrape", requireAdminSecret);
 
 // POST /admin/scrape/run — trigger manual scrape
 router.post("/admin/scrape/run", async (req, res) => {
