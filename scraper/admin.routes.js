@@ -3,10 +3,13 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const StagingJob = require("./models/StagingJob");
 const ScrapeLog = require("./models/ScrapeLog");
-const Jobdesc = require("../model/jobs.schema");
+const JobV2 = require("../model/jobV2.schema");
+const CompanyV2 = require("../model/companyV2.schema");
 const { runPipeline } = require("./scheduler");
 const { scrapeOne, getAdapterByName } = require("./scraper");
-const { requestStop, isStopRequested, getAll: getStopFlags } = require("./stopFlags");
+const { findCompanyByName } = require("./ingester");
+const { generateJobSlug, generateCompanySlug } = require("../utils/slugify");
+const { requestStop, getAll: getStopFlags } = require("./stopFlags");
 
 // Auth middleware — checks x-admin-secret header
 function requireAdminSecret(req, res, next) {
@@ -18,6 +21,74 @@ function requireAdminSecret(req, res, next) {
 }
 
 router.use("/admin/scrape", requireAdminSecret);
+
+/**
+ * Resolve (or create) the CompanyV2 for a staging row.
+ * Order: pre-linked staging.matchedCompany → existing CompanyV2 by name → create from companyData.
+ */
+async function ensureCompanyForStaging(staging) {
+    if (staging.matchedCompany) {
+        const linked = await CompanyV2.findById(staging.matchedCompany);
+        if (linked && !linked.deletedAt) return linked;
+    }
+
+    const companyData = staging.companyData?.toObject ? staging.companyData.toObject() : staging.companyData || {};
+    const companyName = companyData.companyName || staging.jobData?.companyName;
+    if (!companyName) {
+        throw new Error("Cannot resolve company: companyName missing from staging");
+    }
+
+    const existing = await findCompanyByName(companyName);
+    if (existing) return CompanyV2.findById(existing._id);
+
+    // Create a new CompanyV2 from the AI-enriched companyData
+    let slug = generateCompanySlug(companyName);
+    // Resolve slug collisions deterministically (different company names that slugify to the same value)
+    let suffix = 1;
+    while (await CompanyV2.findOne({ slug }).select("_id").lean()) {
+        suffix++;
+        slug = `${generateCompanySlug(companyName)}-${suffix}`;
+        if (suffix > 50) {
+            throw new Error(`Could not generate unique slug for company "${companyName}"`);
+        }
+    }
+
+    const created = await CompanyV2.create({
+        ...companyData,
+        companyName,
+        slug,
+        source: "scraped",
+        status: "active",
+    });
+
+    return created;
+}
+
+/**
+ * Build a JobV2 payload from a staging row + resolved company.
+ */
+async function buildJobV2Payload(staging, company, overrides = {}) {
+    const jobData = staging.jobData?.toObject ? staging.jobData.toObject() : { ...staging.jobData };
+
+    let slug = overrides.slug || generateJobSlug(company.companyName, jobData.title);
+    // Defensive: handle (extremely unlikely) slug collision from nanoid
+    let attempts = 0;
+    while (await JobV2.findOne({ slug }).select("_id").lean()) {
+        attempts++;
+        if (attempts > 5) throw new Error("Could not generate unique job slug after 5 attempts");
+        slug = generateJobSlug(company.companyName, jobData.title);
+    }
+
+    return {
+        ...jobData,
+        ...overrides,
+        company: company._id,
+        companyName: company.companyName,
+        slug,
+        source: "scraped",
+        status: overrides.status || "draft",
+    };
+}
 
 // POST /admin/scrape/run — trigger manual scrape
 router.post("/admin/scrape/run", async (req, res) => {
@@ -69,7 +140,7 @@ router.get("/admin/scrape/staging/:id", async (req, res) => {
     }
 });
 
-// POST /admin/scrape/staging/:id/approve — approve and copy to main collection
+// POST /admin/scrape/staging/:id/approve — approve, ensure company, create JobV2
 router.post("/admin/scrape/staging/:id/approve", async (req, res) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -81,18 +152,23 @@ router.post("/admin/scrape/staging/:id/approve", async (req, res) => {
             return res.status(400).json({ error: `Job already ${staging.status}` });
         }
 
-        // Allow overrides from request body
-        const jobData = { ...staging.jobData.toObject(), ...req.body.overrides };
+        const overrides = req.body?.overrides || {};
 
-        const newJob = new Jobdesc(jobData);
-        await newJob.save();
+        const company = await ensureCompanyForStaging(staging);
+        const payload = await buildJobV2Payload(staging, company, overrides);
+
+        const newJob = await JobV2.create(payload);
 
         staging.status = "approved";
         staging.approvedAt = new Date();
+        staging.approvedJob = newJob._id;
+        staging.matchedCompany = company._id;
+        if (!staging.jobData.company) staging.jobData.company = company._id;
         await staging.save();
 
         res.json({ message: "Approved", data: newJob });
     } catch (err) {
+        console.error(`[Admin] Approve failed: ${err.message}`);
         return res.status(500).json({ error: err.message });
     }
 });
@@ -146,11 +222,15 @@ router.post("/admin/scrape/staging/approve-bulk", async (req, res) => {
                     continue;
                 }
 
-                const newJob = new Jobdesc(staging.jobData.toObject());
-                await newJob.save();
+                const company = await ensureCompanyForStaging(staging);
+                const payload = await buildJobV2Payload(staging, company);
+                const newJob = await JobV2.create(payload);
 
                 staging.status = "approved";
                 staging.approvedAt = new Date();
+                staging.approvedJob = newJob._id;
+                staging.matchedCompany = company._id;
+                if (!staging.jobData.company) staging.jobData.company = company._id;
                 await staging.save();
 
                 approved++;

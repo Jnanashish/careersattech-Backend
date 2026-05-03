@@ -1,11 +1,26 @@
 const StagingJob = require("./models/StagingJob");
-const Jobdesc = require("../model/jobs.schema");
+const JobV2 = require("../model/jobV2.schema");
+const CompanyV2 = require("../model/companyV2.schema");
+
+function escapeRegex(str) {
+    return String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function generateFingerprint(jobData) {
-    const company = (jobData.companyName || "unknown").toLowerCase().trim();
-    const title = (jobData.title || "").toLowerCase().trim();
-    const location = (jobData.location || "").toLowerCase().split(",")[0].trim();
-    return `${company}_${title}_${location}`.replace(/\s+/g, "-");
+    const company = (jobData?.companyName || "unknown").toLowerCase().trim();
+    const title = (jobData?.title || "").toLowerCase().trim();
+    const firstCity = Array.isArray(jobData?.jobLocation) && jobData.jobLocation.length
+        ? (jobData.jobLocation[0]?.city || "").toLowerCase().trim()
+        : "";
+    return `${company}_${title}_${firstCity}`.replace(/\s+/g, "-");
+}
+
+async function findCompanyByName(companyName) {
+    if (!companyName || typeof companyName !== "string") return null;
+    return CompanyV2.findOne({ companyName: companyName.trim(), deletedAt: null })
+        .collation({ locale: "en", strength: 2 })
+        .select("_id companyName")
+        .lean();
 }
 
 async function ingest(transformedJobs, adapterName, aiProvider) {
@@ -14,59 +29,79 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
     const errors = [];
 
     for (const job of transformedJobs) {
-        try {
-            const fingerprint = generateFingerprint(job.jobData);
-            const jobId = job.jobData.jobId || null;
+        const jobData = job.jobData || {};
+        const companyData = job.companyData || {};
 
-            // Layer 1: Check by jobId (most reliable if available)
-            if (jobId) {
-                const existingByJobId = await StagingJob.findOne({ "jobData.jobId": jobId });
-                if (existingByJobId) {
-                    console.log(`[Ingester] Skipping (jobId ${jobId} already in staging): ${job.jobData.title}`);
+        try {
+            // Ensure jobData carries the canonical companyName from the company block
+            if (!jobData.companyName && companyData.companyName) {
+                jobData.companyName = companyData.companyName;
+            }
+
+            const fingerprint = generateFingerprint(jobData);
+            const externalJobId = jobData.externalJobId || null;
+
+            // Layer 1: externalJobId match
+            if (externalJobId) {
+                const existingByExt = await StagingJob.findOne({ "jobData.externalJobId": externalJobId });
+                if (existingByExt) {
+                    console.log(`[Ingester] Skipping (externalJobId ${externalJobId} already in staging): ${jobData.title}`);
                     skippedCount++;
                     continue;
                 }
-                const liveByJobId = await Jobdesc.findOne({ jobId });
-                if (liveByJobId) {
-                    console.log(`[Ingester] Skipping (jobId ${jobId} already live): ${job.jobData.title}`);
+                const liveByExt = await JobV2.findOne({ externalJobId, deletedAt: null });
+                if (liveByExt) {
+                    console.log(`[Ingester] Skipping (externalJobId ${externalJobId} already live): ${jobData.title}`);
                     skippedCount++;
                     continue;
                 }
             }
 
-            // Layer 2: Check by fingerprint in staging (any status)
+            // Layer 2: fingerprint in staging
             const existingStaging = await StagingJob.findOne({ fingerprint });
             if (existingStaging) {
-                console.log(`[Ingester] Skipping (fingerprint match in staging): ${job.jobData.title}`);
+                console.log(`[Ingester] Skipping (fingerprint match in staging): ${jobData.title}`);
                 skippedCount++;
                 continue;
             }
 
-            // Layer 3: Check by apply link URL in staging and main collection
-            if (job.jobData.link) {
-                const existingByLink = await StagingJob.findOne({ "jobData.link": job.jobData.link });
+            // Layer 3: applyLink match
+            if (jobData.applyLink) {
+                const existingByLink = await StagingJob.findOne({ "jobData.applyLink": jobData.applyLink });
                 if (existingByLink) {
-                    console.log(`[Ingester] Skipping (same apply link in staging): ${job.jobData.title}`);
+                    console.log(`[Ingester] Skipping (same apply link in staging): ${jobData.title}`);
                     skippedCount++;
                     continue;
                 }
-                const liveByLink = await Jobdesc.findOne({ link: job.jobData.link });
+                const liveByLink = await JobV2.findOne({ applyLink: jobData.applyLink, deletedAt: null });
                 if (liveByLink) {
-                    console.log(`[Ingester] Skipping (same apply link already live): ${job.jobData.title}`);
+                    console.log(`[Ingester] Skipping (same apply link already live): ${jobData.title}`);
                     skippedCount++;
                     continue;
                 }
             }
 
-            // Layer 4: Check by company + title in main collection (fuzzy)
-            const existingMain = await Jobdesc.findOne({
-                companyName: { $regex: new RegExp(`^${escapeRegex(job.jobData.companyName || "")}$`, "i") },
-                title: { $regex: new RegExp(`^${escapeRegex(job.jobData.title || "")}$`, "i") },
-            });
-            if (existingMain) {
-                console.log(`[Ingester] Skipping (company+title match already live): ${job.jobData.title}`);
-                skippedCount++;
-                continue;
+            // Layer 4: company + title match in JobV2 (case-insensitive exact)
+            if (jobData.companyName && jobData.title) {
+                const existingMain = await JobV2.findOne({
+                    companyName: { $regex: new RegExp(`^${escapeRegex(jobData.companyName)}$`, "i") },
+                    title: { $regex: new RegExp(`^${escapeRegex(jobData.title)}$`, "i") },
+                    deletedAt: null,
+                });
+                if (existingMain) {
+                    console.log(`[Ingester] Skipping (company+title match already live): ${jobData.title}`);
+                    skippedCount++;
+                    continue;
+                }
+            }
+
+            // Map to existing CompanyV2 if one already exists
+            let matchedCompanyId = null;
+            const existingCompany = await findCompanyByName(jobData.companyName);
+            if (existingCompany) {
+                matchedCompanyId = existingCompany._id;
+                jobData.company = existingCompany._id;
+                jobData.companyName = existingCompany.companyName; // canonical casing
             }
 
             await StagingJob.create({
@@ -75,18 +110,23 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
                 sourceUrl: job.sourceUrl,
                 companyPageUrl: job.companyPageUrl,
                 fingerprint,
-                jobData: job.jobData,
+                jobData,
+                companyData,
+                matchedCompany: matchedCompanyId,
                 aiProvider,
             });
 
-            console.log(`[Ingester] Staged: ${job.jobData.title} at ${job.jobData.companyName}`);
+            console.log(
+                `[Ingester] Staged: ${jobData.title} @ ${jobData.companyName}` +
+                (matchedCompanyId ? ` (linked to existing CompanyV2 ${matchedCompanyId})` : " (new company)")
+            );
             newCount++;
         } catch (err) {
             if (err.code === 11000) {
                 // Duplicate fingerprint — race condition, treat as skip
                 skippedCount++;
             } else {
-                console.error(`[Ingester] Error ingesting ${job.jobData.title}: ${err.message}`);
+                console.error(`[Ingester] Error ingesting ${jobData.title}: ${err.message}`);
                 errors.push({
                     jobUrl: job.sourceUrl,
                     step: "ingest",
@@ -100,21 +140,17 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
     return { new: newCount, skipped: skippedCount, errors };
 }
 
-function escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 async function filterKnownUrls(urls) {
     if (!urls.length) return new Set();
 
     const [stagingBySource, liveByLink] = await Promise.all([
         StagingJob.find({ sourceUrl: { $in: urls } }, { sourceUrl: 1 }).lean(),
-        Jobdesc.find({ link: { $in: urls } }, { link: 1 }).lean(),
+        JobV2.find({ applyLink: { $in: urls }, deletedAt: null }, { applyLink: 1 }).lean(),
     ]);
 
     const known = new Set();
     stagingBySource.forEach((j) => known.add(j.sourceUrl));
-    liveByLink.forEach((j) => known.add(j.link));
+    liveByLink.forEach((j) => known.add(j.applyLink));
     return known;
 }
 
@@ -128,12 +164,12 @@ async function filterKnownJobs(jobs) {
     const [knownUrls, stagingByLink] = await Promise.all([
         filterKnownUrls(allUrls),
         companyUrls.length
-            ? StagingJob.find({ "jobData.link": { $in: companyUrls } }, { "jobData.link": 1 }).lean()
+            ? StagingJob.find({ "jobData.applyLink": { $in: companyUrls } }, { "jobData.applyLink": 1 }).lean()
             : [],
     ]);
 
     stagingByLink.forEach((j) => {
-        if (j.jobData?.link) knownUrls.add(j.jobData.link);
+        if (j.jobData?.applyLink) knownUrls.add(j.jobData.applyLink);
     });
 
     const filtered = jobs.filter((j) => {
@@ -149,4 +185,4 @@ async function filterKnownJobs(jobs) {
     return { filtered, skipped };
 }
 
-module.exports = { ingest, generateFingerprint, filterKnownUrls, filterKnownJobs };
+module.exports = { ingest, generateFingerprint, filterKnownUrls, filterKnownJobs, findCompanyByName };
