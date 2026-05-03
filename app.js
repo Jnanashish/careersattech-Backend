@@ -36,16 +36,33 @@ const blogScheduler = require("./blog/blog.scheduler");
 const jobsV2AdminRoutes = require("./routes/admin/jobsV2.routes");
 const companiesV2AdminRoutes = require("./routes/admin/companiesV2.routes");
 const jobsV2PublicRoutes = require("./routes/public/jobsV2.routes");
+const jobsV2PublicReadRoutes = require("./routes/public/jobsV2Public.routes");
+const companiesV2PublicReadRoutes = require("./routes/public/companiesV2Public.routes");
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",")
-    : ["http://localhost:3000"];
+const STATIC_PUBLIC_ORIGINS = [
+    "https://careersat.tech",
+    "https://www.careersat.tech",
+    "http://localhost:3000",
+];
+const VERCEL_PREVIEW = /^https:\/\/[^/]+\.vercel\.app$/;
+
+const envOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+const allowedOrigins = Array.from(new Set([...STATIC_PUBLIC_ORIGINS, ...envOrigins]));
 
 app.use(
     cors({
-        origin: allowedOrigins,
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+        origin: (origin, cb) => {
+            if (!origin) return cb(null, true);
+            if (allowedOrigins.includes(origin)) return cb(null, true);
+            if (VERCEL_PREVIEW.test(origin)) return cb(null, true);
+            return cb(null, false);
+        },
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-admin-secret"],
+        credentials: true,
     })
 );
 
@@ -67,8 +84,13 @@ const writeLimiter = rateLimit({
     message: { error: "Too many requests, please try again later" },
 });
 
+// Track endpoints have their own per-IP+slug limiter (10/min, silent 204).
+// Skip the global write limiter so they aren't blocked with a 429 JSON body.
+const TRACK_PATH = /^\/jobs\/v2\/[^/]+\/track-(view|apply)$/;
+
 app.use("/api", (req, res, next) => {
     if (req.method === "GET") return readLimiter(req, res, next);
+    if (req.method === "POST" && TRACK_PATH.test(req.path)) return next();
     return writeLimiter(req, res, next);
 });
 
@@ -90,6 +112,8 @@ app.use("/api", blogRoutes);
 app.use("/api", blogAdminRoutes);
 app.use("/api", jobsV2AdminRoutes);
 app.use("/api", companiesV2AdminRoutes);
+app.use("/api/jobs/v2", jobsV2PublicReadRoutes);
+app.use("/api/companies/v2", companiesV2PublicReadRoutes);
 app.use("/api", jobsV2PublicRoutes);
 
 const PORT = process.env.PORT || 5002;
