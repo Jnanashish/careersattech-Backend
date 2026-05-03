@@ -189,6 +189,14 @@ const jobV2Schema = new mongoose.Schema(
     externalJobId: { type: String },
     postedBy: { type: String },
 
+    // ─── Publish / approval audit (optional) ───────────────
+    publishedAt: { type: Date },
+    approvedBy: { type: String },
+    approvedFromStagingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "StagingJob",
+    },
+
     // ─── Soft delete ───────────────────────────────────────
     deletedAt: { type: Date, default: null },
   },
