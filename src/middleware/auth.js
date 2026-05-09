@@ -10,9 +10,6 @@ async function requireAuth(req, res, next) {
         const token = authHeader.slice(7);
         try {
             const decoded = await admin.auth().verifyIdToken(token);
-            if (decoded.email_verified !== true) {
-                return res.status(403).json({ error: "Email not verified" });
-            }
             if (config.firebase.requireAdminClaim && decoded.admin !== true) {
                 return res.status(403).json({ error: "Admin claim required" });
             }
