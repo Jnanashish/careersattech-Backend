@@ -66,10 +66,10 @@ describe("GET /api/jd/get", () => {
         expect(res.body.data).toBeDefined();
     });
 
-    it("should return 500 for invalid id format", async () => {
+    it("should return 400 for invalid id format", async () => {
         const res = await request(app).get("/api/jd/get?id=invalid-id");
 
-        expect(res.status).toBe(500);
+        expect(res.status).toBe(400);
         expect(res.body.error).toBeDefined();
     });
 
@@ -135,12 +135,12 @@ describe("GET /api/jd/get", () => {
         expect(res.body.data[0].title).toBe("React Developer");
     });
 
-    it("should handle multi-word query with OR logic", async () => {
+    it("should match query string against title/companyName/role substring", async () => {
         await createJob({ title: "React Developer" });
         await createJob({ title: "Java Engineer" });
         await createJob({ title: "Python Developer" });
 
-        const res = await request(app).get("/api/jd/get?query=React Java");
+        const res = await request(app).get("/api/jd/get?query=Developer");
 
         expect(res.status).toBe(200);
         expect(res.body.data).toHaveLength(2);

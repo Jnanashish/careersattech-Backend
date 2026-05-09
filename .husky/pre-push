@@ -1,0 +1,2 @@
+echo "[husky] running tests before push…"
+npm test

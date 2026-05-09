@@ -1,4 +1,7 @@
 config.env
 node_modules
 .env
+.env.example
+.env.local
+.env.*.local
 Procfile

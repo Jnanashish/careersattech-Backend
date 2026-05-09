@@ -100,7 +100,7 @@ describe("Authentication", () => {
             .post("/api/companydetails/add")
             .set("Authorization", "Bearer test-secret-key")
             .send({ companyName: "Bearer Test Co" });
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(201);
     });
 });
 
@@ -168,7 +168,7 @@ describe("Mass Assignment Prevention", () => {
                 listedJobs: [fakeJobId],
             });
 
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(201);
 
         const company = await CompanyLogo.findOne({ companyName: "Mass Assignment Co" });
         expect(company.listedJobs).toHaveLength(0);

@@ -42,7 +42,7 @@ describe("POST /api/companydetails/add", () => {
             companyType: "startup",
         });
 
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(201);
         expect(res.body.message).toBe("Data added successfully");
         expect(res.body.id).toBeDefined();
 
@@ -271,13 +271,12 @@ describe("DELETE /api/companydetails/delete/:id", () => {
         expect(deleted).toBeNull();
     });
 
-    it("should return 200 even if company doesn't exist", async () => {
+    it("should return 404 when company doesn't exist", async () => {
         const fakeId = new mongoose.Types.ObjectId();
 
         const res = await request(app).delete(`/api/companydetails/delete/${fakeId}`).set(AUTH);
 
-        // deleteOne doesn't throw on no match
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(404);
     });
 
     it("should return 400 for invalid id format", async () => {

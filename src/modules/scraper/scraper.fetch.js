@@ -3,6 +3,9 @@ const cheerio = require("cheerio");
 const adapters = require("./adapters");
 const { filterKnownUrls } = require("./ingester");
 const { isStopRequested } = require("./stopFlags");
+const config = require("../../config");
+const logger = require("../../utils/logger");
+const { isPublicHttpsUrl } = require("../../utils/urlGuard");
 
 const USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -27,20 +30,25 @@ function stripHtml(html) {
 }
 
 function buildFetchUrl(url) {
-    // ScraperAPI: 5000 free requests/month — https://www.scraperapi.com/
-    if (process.env.SCRAPERAPI_KEY) {
-        return `http://api.scraperapi.com?api_key=${process.env.SCRAPERAPI_KEY}&url=${encodeURIComponent(url)}&render=false`;
+    // CAT-SEC-006: ScraperAPI must be HTTPS so the API key is not transmitted in cleartext.
+    if (config.scraper.scraperApiKey) {
+        return `https://api.scraperapi.com/?api_key=${encodeURIComponent(config.scraper.scraperApiKey)}&url=${encodeURIComponent(url)}&render=false`;
     }
     return url;
 }
 
 async function fetchPage(url, headers = {}) {
+    // CAT-SEC-009: SSRF guard — only fetch public HTTPS targets.
+    if (!isPublicHttpsUrl(url)) {
+        throw new Error(`Refusing to fetch non-public-HTTPS URL: ${url}`);
+    }
+
     const fetchUrl = buildFetchUrl(url);
     const isProxy = fetchUrl !== url;
 
     const response = await axios.get(fetchUrl, {
         headers: isProxy
-            ? {} // proxy handles headers
+            ? {}
             : {
                   "User-Agent": USER_AGENT,
                   "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -56,19 +64,26 @@ async function fetchPage(url, headers = {}) {
                   ...headers,
               },
         timeout: isProxy ? 30000 : 15000,
-        maxRedirects: 5,
+        maxRedirects: 3,
     });
+
+    if (!isProxy && response.request && response.request.res && response.request.res.responseUrl) {
+        if (!isPublicHttpsUrl(response.request.res.responseUrl)) {
+            throw new Error(`Redirect chain reached non-public URL: ${response.request.res.responseUrl}`);
+        }
+    }
+
     return response.data;
 }
 
 async function scrapeOne(adapter, options = {}) {
     if (isStopRequested(adapter.name)) {
-        console.log(`[Scraper] ${adapter.displayName}: stop requested, skipping`);
+        logger.info(`[Scraper] ${adapter.displayName}: stop requested, skipping`);
         return { jobs: [], stats: { jobLinksFound: 0, jobsFetched: 0, errors: [], stopped: true } };
     }
 
     if (typeof adapter.scrape === "function") {
-        console.log(`[Scraper] Starting ${adapter.displayName} (custom scrape)`);
+        logger.info(`[Scraper] Starting ${adapter.displayName} (custom scrape)`);
         return adapter.scrape(options);
     }
 
@@ -79,7 +94,7 @@ async function scrapeOne(adapter, options = {}) {
         errors: [],
     };
 
-    console.log(`[Scraper] Starting ${adapter.displayName} (${adapter.baseUrl})`);
+    logger.info(`[Scraper] Starting ${adapter.displayName} (${adapter.baseUrl})`);
 
     // Step 1: Fetch homepage and extract job links
     let allLinks = [];
@@ -91,7 +106,7 @@ async function scrapeOne(adapter, options = {}) {
 
     while (currentUrl && pagesScraped < maxPages) {
         if (isStopRequested(adapter.name)) {
-            console.log(`[Scraper] ${adapter.displayName}: stop requested, aborting page fetch`);
+            logger.info(`[Scraper] ${adapter.displayName}: stop requested, aborting page fetch`);
             return { jobs: [], stats: { ...stats, stopped: true } };
         }
 
@@ -130,17 +145,17 @@ async function scrapeOne(adapter, options = {}) {
     if (knownUrls.size > 0) {
         const before = allLinks.length;
         allLinks = allLinks.filter((url) => !knownUrls.has(url));
-        console.log(`[Scraper] ${adapter.displayName}: skipped ${before - allLinks.length} already-known URLs`);
+        logger.info(`[Scraper] ${adapter.displayName}: skipped ${before - allLinks.length} already-known URLs`);
     }
 
-    console.log(`[Scraper] ${adapter.displayName}: found ${allLinks.length} new job links (${stats.jobLinksFound} total)`);
+    logger.info(`[Scraper] ${adapter.displayName}: found ${allLinks.length} new job links (${stats.jobLinksFound} total)`);
 
     // Step 2: Visit each sub-page and extract data
     const jobs = [];
 
     for (const link of allLinks) {
         if (isStopRequested(adapter.name)) {
-            console.log(`[Scraper] ${adapter.displayName}: stop requested, aborting job detail fetch`);
+            logger.info(`[Scraper] ${adapter.displayName}: stop requested, aborting job detail fetch`);
             return { jobs: [], stats: { ...stats, stopped: true } };
         }
 
@@ -187,7 +202,7 @@ async function scrapeOne(adapter, options = {}) {
                     const companyHtml = await fetchPage(companyUrl, adapter.options.headers);
                     companyPageContent = stripHtml(companyHtml).slice(0, 5000);
                 } catch (err) {
-                    console.log(
+                    logger.info(
                         `[Scraper] ${adapter.displayName}: failed to fetch company page ${companyUrl}: ${err.message}`
                     );
                 }
@@ -203,7 +218,7 @@ async function scrapeOne(adapter, options = {}) {
                 companyPageContent,
             });
         } catch (err) {
-            console.log(
+            logger.info(
                 `[Scraper] ${adapter.displayName}: error fetching ${link}: ${err.message}`
             );
             stats.errors.push({
@@ -214,22 +229,19 @@ async function scrapeOne(adapter, options = {}) {
         }
     }
 
-    console.log(
+    logger.info(
         `[Scraper] ${adapter.displayName}: fetched ${stats.jobsFetched}/${stats.jobLinksFound} jobs`
     );
 
     return { jobs, stats };
 }
 
-async function scrapeAll(adapterNames = null) {
+async function scrapeAll() {
     const results = [];
-    const targets = adapterNames
-        ? adapters.filter((a) => adapterNames.includes(a.name))
-        : adapters;
 
-    for (const adapter of targets) {
+    for (const adapter of adapters) {
         if (isStopRequested(adapter.name)) {
-            console.log(`[Scraper] ${adapter.name}: stop requested, skipping`);
+            logger.info(`[Scraper] ${adapter.name}: stop requested, skipping`);
             results.push({
                 adapter: adapter.name,
                 jobs: [],
@@ -257,7 +269,7 @@ async function scrapeAll(adapterNames = null) {
                 },
             });
         } catch (err) {
-            console.error(`[Scraper] ${adapter.displayName} failed: ${err.message}`);
+            logger.error(`[Scraper] ${adapter.displayName} failed: ${err.message}`);
             results.push({
                 adapter: adapter.name,
                 jobs: [],

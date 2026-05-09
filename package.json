@@ -1,32 +1,36 @@
 {
   "name": "interviewprep",
   "version": "1.0.0",
-  "main": "app.js",
+  "main": "server.js",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "test": "jest --forceExit --detectOpenHandles",
-    "start": "node app.js",
-    "dev": "nodemon app.js",
+    "start": "node server.js",
+    "dev": "nodemon server.js",
     "db:v2:seed": "node ./migration/scripts/seed-v2.js",
     "db:v2:seed:reset": "node ./migration/scripts/seed-v2.js --reset",
     "db:v2:verify": "node ./migration/scripts/verify-v2.js",
-    "db:v2:e2e": "node ./migration/scripts/e2e-v2.js"
+    "db:v2:e2e": "node ./migration/scripts/e2e-v2.js",
+    "prepare": "husky"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.14.0",
     "blurhash": "^2.0.5",
     "cheerio": "^1.2.0",
     "cloudinary": "^2.5.1",
+    "cookie": "^1.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-fileupload": "^1.5.1",
     "express-rate-limit": "^8.3.2",
+    "file-type": "^16.5.4",
     "firebase-admin": "^13.7.0",
     "groq-sdk": "^1.1.2",
     "hast-util-to-string": "^3.0.1",
@@ -46,9 +50,11 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "uuid": "^13.0.0",
+    "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
     "jest": "^30.3.0",
     "mongodb-memory-server": "^10.4.3",
     "nodemon": "^3.1.9",

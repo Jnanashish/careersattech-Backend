@@ -1,20 +1,19 @@
 const cron = require("node-cron");
 const { randomUUID } = require("crypto");
-const { scrapeAll } = require("./scraper");
-const { transformBatch } = require("./transformer");
-const { ingest, filterKnownJobs } = require("./ingester");
-const { getProvider } = require("./providers");
-const ScrapeLog = require("./models/ScrapeLog");
-const notifier = require("./notifier");
-const { isStopRequested, clearStop } = require("./stopFlags");
+const { scrapeAll } = require("../modules/scraper/scraper.fetch");
+const { transformBatch } = require("../modules/scraper/transformer");
+const { ingest, filterKnownJobs } = require("../modules/scraper/ingester");
+const { getProvider } = require("../modules/scraper/providers");
+const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
+const notifier = require("../modules/scraper/notifier");
+const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
 
-async function runPipeline(trigger = "manual", adapterNames = null) {
+async function runPipeline(trigger = "manual") {
     const runId = randomUUID();
     const startedAt = new Date();
     const aiProvider = getProvider().name;
 
-    const scope = adapterNames ? adapterNames.join(",") : "all";
-    console.log(`[Scheduler] Starting scrape run ${runId} (trigger: ${trigger}, ai: ${aiProvider}, adapters: ${scope})`);
+    console.log(`[Scheduler] Starting scrape run ${runId} (trigger: ${trigger}, ai: ${aiProvider})`);
 
     const adapterResults = [];
     let totalNew = 0;
@@ -24,7 +23,7 @@ async function runPipeline(trigger = "manual", adapterNames = null) {
     const adaptersFailed = [];
 
     try {
-        const scrapeResults = await scrapeAll(adapterNames);
+        const scrapeResults = await scrapeAll();
 
         for (const result of scrapeResults) {
             // Check if stop was requested for this adapter
@@ -187,28 +186,22 @@ async function checkConsecutiveFailures(failedAdapters) {
     }
 }
 
-// IST → UTC: 12PM=06:30, 3PM=09:30, 6PM=12:30
-const ADAPTER_SCHEDULES = [
-    { cron: "30 6 * * *", adapter: "freshershunt", label: "12PM IST" },
-    { cron: "30 9 * * *", adapter: "offcampusjobs4u", label: "3PM IST" },
-    { cron: "30 12 * * *", adapter: "onlyfrontendjobs", label: "6PM IST" },
-];
+// 6:00 PM IST = 12:30 UTC
+const CRON_SCHEDULE = "30 12 * * *";
 
 function init() {
-    for (const { cron: schedule, adapter, label } of ADAPTER_SCHEDULES) {
-        console.log(`[Scheduler] Initializing cron: ${schedule} (${adapter} @ ${label})`);
+    console.log(`[Scheduler] Initializing cron: ${CRON_SCHEDULE} (6PM IST daily)`);
 
-        cron.schedule(schedule, async () => {
-            try {
-                await runPipeline("cron", [adapter]);
-            } catch (err) {
-                console.error(`[Scheduler] Cron run failed (${adapter}): ${err.message}`);
-                await notifier.sendCriticalAlert(`Cron run failed (${adapter}): ${err.message}`);
-            }
-        });
-    }
+    cron.schedule(CRON_SCHEDULE, async () => {
+        try {
+            await runPipeline("cron");
+        } catch (err) {
+            console.error(`[Scheduler] Cron run failed: ${err.message}`);
+            await notifier.sendCriticalAlert(`Cron run failed: ${err.message}`);
+        }
+    });
 
-    console.log("[Scheduler] All crons scheduled successfully");
+    console.log("[Scheduler] Cron scheduled successfully");
 }
 
 module.exports = { init, runPipeline };
