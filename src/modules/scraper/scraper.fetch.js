@@ -29,12 +29,41 @@ function stripHtml(html) {
     return $("body").text().replace(/\s+/g, " ").trim();
 }
 
-function buildFetchUrl(url) {
-    // CAT-SEC-006: ScraperAPI must be HTTPS so the API key is not transmitted in cleartext.
-    if (config.scraper.scraperApiKey) {
-        return `https://api.scraperapi.com/?api_key=${encodeURIComponent(config.scraper.scraperApiKey)}&url=${encodeURIComponent(url)}&render=false`;
+// ScraperAPI key rotation: pick by day-of-year for daily rotation,
+// fall back to next key when current key hits quota (401/403 or "quota|limit|exceed" body).
+// Exhausted keys are tracked in-memory and reset on process restart.
+const exhaustedKeys = new Set();
+
+function dayOfYear() {
+    const now = new Date();
+    const start = Date.UTC(now.getUTCFullYear(), 0, 0);
+    return Math.floor((now.getTime() - start) / 86400000);
+}
+
+function pickScraperKey() {
+    const keys = config.scraper.scraperApiKeys;
+    if (!keys || keys.length === 0) return null;
+    const startIdx = dayOfYear() % keys.length;
+    for (let i = 0; i < keys.length; i++) {
+        const idx = (startIdx + i) % keys.length;
+        const k = keys[idx];
+        if (!exhaustedKeys.has(k)) return { key: k, index: idx };
     }
-    return url;
+    return null;
+}
+
+function buildScraperApiUrl(targetUrl, apiKey) {
+    // CAT-SEC-006: ScraperAPI must be HTTPS so the API key is not transmitted in cleartext.
+    return `https://api.scraperapi.com/?api_key=${encodeURIComponent(apiKey)}&url=${encodeURIComponent(targetUrl)}&render=false`;
+}
+
+function isScraperApiQuotaError(err) {
+    const status = err && err.response && err.response.status;
+    if (status === 401 || status === 403) return true;
+    if (status === 429) return true;
+    const data = err && err.response && err.response.data;
+    const body = typeof data === "string" ? data : data ? JSON.stringify(data) : "";
+    return /quota|limit|exceed|exhaust/i.test(body);
 }
 
 async function fetchPage(url, headers = {}) {
@@ -43,31 +72,59 @@ async function fetchPage(url, headers = {}) {
         throw new Error(`Refusing to fetch non-public-HTTPS URL: ${url}`);
     }
 
-    const fetchUrl = buildFetchUrl(url);
-    const isProxy = fetchUrl !== url;
+    const directHeaders = {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        ...headers,
+    };
 
-    const response = await axios.get(fetchUrl, {
-        headers: isProxy
-            ? {}
-            : {
-                  "User-Agent": USER_AGENT,
-                  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                  "Accept-Language": "en-US,en;q=0.9",
-                  "Accept-Encoding": "gzip, deflate, br",
-                  "Cache-Control": "no-cache",
-                  "Pragma": "no-cache",
-                  "Sec-Fetch-Dest": "document",
-                  "Sec-Fetch-Mode": "navigate",
-                  "Sec-Fetch-Site": "none",
-                  "Sec-Fetch-User": "?1",
-                  "Upgrade-Insecure-Requests": "1",
-                  ...headers,
-              },
-        timeout: isProxy ? 30000 : 15000,
+    const totalKeys = (config.scraper.scraperApiKeys || []).length;
+
+    // Try ScraperAPI keys with rotation + quota failover. If no keys configured
+    // or all keys exhausted, fall through to a direct fetch.
+    for (let attempt = 0; attempt < totalKeys; attempt++) {
+        const picked = pickScraperKey();
+        if (!picked) break;
+
+        try {
+            const response = await axios.get(buildScraperApiUrl(url, picked.key), {
+                headers: {},
+                timeout: 30000,
+                maxRedirects: 3,
+            });
+            return response.data;
+        } catch (err) {
+            if (isScraperApiQuotaError(err)) {
+                exhaustedKeys.add(picked.key);
+                logger.warn(
+                    `[Scraper] ScraperAPI key #${picked.index + 1} exhausted (status=${err.response && err.response.status}); rotating to next key`
+                );
+                continue;
+            }
+            throw err;
+        }
+    }
+
+    if (totalKeys > 0) {
+        logger.warn("[Scraper] All ScraperAPI keys exhausted; falling back to direct fetch");
+    }
+
+    const response = await axios.get(url, {
+        headers: directHeaders,
+        timeout: 15000,
         maxRedirects: 3,
     });
 
-    if (!isProxy && response.request && response.request.res && response.request.res.responseUrl) {
+    if (response.request && response.request.res && response.request.res.responseUrl) {
         if (!isPublicHttpsUrl(response.request.res.responseUrl)) {
             throw new Error(`Redirect chain reached non-public URL: ${response.request.res.responseUrl}`);
         }

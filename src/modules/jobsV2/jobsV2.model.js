@@ -197,6 +197,22 @@ const jobV2Schema = new mongoose.Schema(
       ref: "StagingJob",
     },
 
+    // ─── Apply-URL verifier audit ──────────────────────────
+    verification: {
+      lastCheckedAt: { type: Date, default: null },
+      lastCheckResult: {
+        type: String,
+        enum: ["active", "expired", "inconclusive", null],
+        default: null,
+      },
+      lastCheckReason: { type: String, default: null },
+      lastCheckStatusCode: { type: Number, default: null },
+      lastCheckFinalUrl: { type: String, default: null },
+      consecutiveInconclusive: { type: Number, default: 0 },
+    },
+    archivedAt: { type: Date, default: null },
+    archivedReason: { type: String, default: null },
+
     // ─── Soft delete ───────────────────────────────────────
     deletedAt: { type: Date, default: null },
   },
@@ -210,6 +226,7 @@ jobV2Schema.index({ status: 1, employmentType: 1 });
 jobV2Schema.index({ status: 1, workMode: 1 });
 jobV2Schema.index({ company: 1, status: 1 });
 jobV2Schema.index({ "sponsorship.tier": -1, priority: -1, datePosted: -1 });
+jobV2Schema.index({ status: 1, "verification.lastCheckedAt": 1 });
 
 // ─── Text search ─────────────────────────────────────────────
 jobV2Schema.index({

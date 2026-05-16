@@ -80,7 +80,11 @@ const config = Object.freeze({
         openrouterModel: env.OPENROUTER_MODEL,
     }),
     scraper: Object.freeze({
-        scraperApiKey: env.SCRAPERAPI_KEY,
+        scraperApiKeys: Object.freeze(
+            [env.SCRAPERAPI_KEY_1, env.SCRAPERAPI_KEY_2, env.SCRAPERAPI_KEY_3]
+                .map((k) => (typeof k === "string" ? k.trim() : ""))
+                .filter(Boolean)
+        ),
     }),
     telegram: Object.freeze({
         botToken: env.TELEGRAM_BOT_TOKEN,

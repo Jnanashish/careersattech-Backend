@@ -27,22 +27,6 @@ jest.mock("cloudinary", () => ({
     },
 }));
 
-// The blog markdown pipeline uses dynamic import() of ESM-only modules
-// (unified, remark-*, rehype-*) which Jest can't load without
-// --experimental-vm-modules. Stub it to a deterministic pure-JS impl.
-jest.mock("../blog/markdown.service", () => ({
-    processMarkdown: async (md) => {
-        const html = `<p>${String(md || "").replace(/\s+/g, " ").trim()}</p>`;
-        const wordCount = String(md || "").trim().split(/\s+/).filter(Boolean).length;
-        return {
-            html,
-            tableOfContents: [],
-            wordCount,
-            readingTime: Math.max(1, Math.ceil(wordCount / 200)),
-        };
-    },
-}));
-
 const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 

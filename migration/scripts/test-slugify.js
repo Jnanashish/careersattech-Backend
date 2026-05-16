@@ -1,5 +1,5 @@
 const path = require("path");
-const { generateJobSlug, generateCompanySlug, validateSlug } = require(path.join(__dirname, "..", "..", "utils", "slugify"));
+const { generateJobSlug, generateCompanySlug, validateSlug } = require(path.join(__dirname, "..", "..", "src", "utils", "slugify"));
 
 const results = [];
 

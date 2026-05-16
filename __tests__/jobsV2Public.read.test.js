@@ -2,16 +2,16 @@ const request = require("supertest");
 
 require("./setup");
 const express = require("express");
-const JobV2 = require("../model/jobV2.schema");
-const CompanyV2 = require("../model/companyV2.schema");
+const JobV2 = require("../src/modules/jobsV2/jobsV2.model");
+const CompanyV2 = require("../src/modules/companiesV2/companiesV2.model");
 
 let app;
 
 beforeAll(() => {
     app = express();
     app.use(express.json({ limit: "1mb" }));
-    app.use("/api/jobs/v2", require("../routes/public/jobsV2Public.routes"));
-    app.use("/api/companies/v2", require("../routes/public/companiesV2Public.routes"));
+    app.use("/api/jobs/v2", require("../src/modules/jobsV2/jobsV2.publicRead.routes"));
+    app.use("/api/companies/v2", require("../src/modules/companiesV2/companiesV2.publicRead.routes"));
 });
 
 async function makeCompany(overrides = {}) {

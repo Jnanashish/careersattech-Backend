@@ -5,10 +5,11 @@ dotenv.config({ path: path.join(__dirname, "..", "..", ".env") });
 
 const mongoose = require("mongoose");
 
-require(path.join(__dirname, "..", "..", "DB", "connection"));
+const db = require(path.join(__dirname, "..", "..", "src", "config", "db"));
+db.connect();
 
-const JobV2 = require(path.join(__dirname, "..", "..", "model", "jobV2.schema"));
-const CompanyV2 = require(path.join(__dirname, "..", "..", "model", "companyV2.schema"));
+const JobV2 = require(path.join(__dirname, "..", "..", "src", "modules", "jobsV2", "jobsV2.model"));
+const CompanyV2 = require(path.join(__dirname, "..", "..", "src", "modules", "companiesV2", "companiesV2.model"));
 
 const COLORS = {
     reset: "\x1b[0m",
