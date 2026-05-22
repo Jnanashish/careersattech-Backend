@@ -358,4 +358,4 @@ function getAdapterByName(name) {
     return allAdapters.find((a) => a.name === name) || null;
 }
 
-module.exports = { scrapeOne, scrapeAll, getAdapterByName };
+module.exports = { scrapeOne, scrapeAll, getAdapterByName, fetchPage };

@@ -1,0 +1,88 @@
+<!doctype html>
+<!--
+  Synthetic minimal fixture for the Peerlist scraper integration test.
+  Mirrors the shape parseJobCards() expects: anchors to /jobs/<slug>, with
+  per-card title/company/location/experience/apply markup. REPLACE with a
+  real fetched page (curl https://peerlist.io/jobs?page=1 > this file)
+  before relying on this for selector-stability regression coverage.
+-->
+<html>
+<head><title>Jobs — Peerlist (fixture)</title></head>
+<body>
+<main>
+  <article role="listitem">
+    <a href="/jobs/india-junior-fe">
+      <h2>Frontend Engineer</h2>
+    </a>
+    <div class="company-name">Acme Robotics</div>
+    <div class="location">Bangalore, India</div>
+    <div class="experience">0-2 years</div>
+    <div class="employment">Full-time</div>
+    <span class="skill">React</span>
+    <span class="skill">TypeScript</span>
+    <span class="skill">CSS</span>
+    <div class="salary">8-12 LPA</div>
+    <p class="description">Build the next generation of robotics dashboards.</p>
+    <time class="posted">2 days ago</time>
+    <a href="https://careers.acme.example.com/jobs/fe-001" target="_blank">Apply</a>
+  </article>
+
+  <article role="listitem">
+    <a href="/jobs/india-junior-be">
+      <h2>Backend Engineer</h2>
+    </a>
+    <div class="company-name">Zeta Labs</div>
+    <div class="location">Remote, India</div>
+    <div class="experience">2-5 years</div>
+    <div class="employment">Full-time</div>
+    <span class="skill">Node.js</span>
+    <span class="skill">Postgres</span>
+    <div class="salary">15-22 LPA</div>
+    <p class="description">Scale our API platform across multiple regions.</p>
+    <time class="posted">5 days ago</time>
+    <a href="https://jobs.zetalabs.example.com/be-007" target="_blank">Apply</a>
+  </article>
+
+  <article role="listitem">
+    <a href="/jobs/usa-fe">
+      <h2>Frontend Engineer</h2>
+    </a>
+    <div class="company-name">SunBay</div>
+    <div class="location">San Francisco, USA</div>
+    <div class="experience">2-5 years</div>
+    <div class="employment">Full-time</div>
+    <span class="skill">React</span>
+    <p class="description">SF-based product company hiring frontend talent.</p>
+    <time class="posted">1 week ago</time>
+    <a href="https://sunbay.example.com/jobs/fe" target="_blank">Apply</a>
+  </article>
+
+  <article role="listitem">
+    <a href="/jobs/sr-eng">
+      <h2>Senior Backend Engineer</h2>
+    </a>
+    <div class="company-name">Acme Robotics</div>
+    <div class="location">Pune, India</div>
+    <div class="experience">6-10 years</div>
+    <div class="employment">Full-time</div>
+    <span class="skill">Go</span>
+    <p class="description">Lead the platform team.</p>
+    <time class="posted">3 days ago</time>
+    <a href="https://careers.acme.example.com/jobs/be-sr" target="_blank">Apply</a>
+  </article>
+
+  <article role="listitem">
+    <a href="/jobs/internal-peerlist">
+      <h2>Engineer at Peerlist</h2>
+    </a>
+    <div class="company-name">Peerlist</div>
+    <div class="location">Bangalore, India</div>
+    <div class="experience">0-2 years</div>
+    <div class="employment">Full-time</div>
+    <p class="description">Join the Peerlist team.</p>
+    <time class="posted">today</time>
+    <a href="https://peerlist.io/jobs/internal-peerlist" target="_blank">Apply on Peerlist</a>
+  </article>
+</main>
+</body>
+</html>

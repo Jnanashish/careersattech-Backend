@@ -1,0 +1,152 @@
+const INDIAN_CITIES = [
+    "bangalore",
+    "bengaluru",
+    "mumbai",
+    "delhi",
+    "ncr",
+    "gurgaon",
+    "gurugram",
+    "noida",
+    "hyderabad",
+    "pune",
+    "chennai",
+    "kolkata",
+    "ahmedabad",
+    "jaipur",
+    "kochi",
+    "trivandrum",
+    "thiruvananthapuram",
+    "indore",
+    "bhubaneswar",
+    "chandigarh",
+    "coimbatore",
+    "surat",
+    "nagpur",
+    "vadodara",
+    "lucknow",
+];
+
+const INDIA_PHRASES = [
+    "remote, india",
+    "remote (india)",
+    "india - remote",
+    "anywhere in india",
+    "pan india",
+    "across india",
+];
+
+const NON_INDIA_COUNTRIES = [
+    "usa",
+    "united states",
+    "u.s.",
+    "u.s.a.",
+    "america",
+    "uk",
+    "united kingdom",
+    "england",
+    "scotland",
+    "ireland",
+    "singapore",
+    "dubai",
+    "uae",
+    "germany",
+    "canada",
+    "australia",
+    "new zealand",
+    "japan",
+    "china",
+    "netherlands",
+    "france",
+    "spain",
+    "switzerland",
+    "italy",
+    "sweden",
+    "norway",
+    "denmark",
+    "finland",
+    "poland",
+    "brazil",
+    "mexico",
+    "argentina",
+    "south africa",
+    "kenya",
+    "nigeria",
+    "egypt",
+    "saudi arabia",
+    "qatar",
+    "kuwait",
+    "bahrain",
+    "oman",
+    "israel",
+    "turkey",
+    "russia",
+    "ukraine",
+    "vietnam",
+    "thailand",
+    "indonesia",
+    "malaysia",
+    "philippines",
+    "south korea",
+    "korea",
+    "taiwan",
+    "hong kong",
+];
+
+const AMBIGUOUS_LOCATIONS = ["worldwide", "global", "anywhere", "earth"];
+
+const SHORTLINK_HOSTS = [
+    "lnkd.in",
+    "bit.ly",
+    "tinyurl.com",
+    "t.co",
+    "goo.gl",
+];
+
+const SOURCE_HOSTS = [
+    "peerlist.io",
+    "www.peerlist.io",
+];
+
+const APPLYURL_BLOCKLIST = [...SOURCE_HOSTS, ...SHORTLINK_HOSTS];
+
+const SENIORITY_TITLE_TERMS = [
+    "senior",
+    "sr.",
+    "sr ",
+    "staff",
+    "principal",
+    "lead",
+    "architect",
+    "manager",
+    "head",
+    "director",
+    "vp",
+    "vice president",
+    "chief",
+    "cto",
+    "ceo",
+    "coo",
+    "cfo",
+];
+
+const MAX_SENIORITY_YEARS = 5;
+
+const SCRUB_PHRASES = [
+    "via Peerlist",
+    "Posted on Peerlist",
+    "on Peerlist",
+    "Peerlist",
+];
+
+module.exports = {
+    INDIAN_CITIES,
+    INDIA_PHRASES,
+    NON_INDIA_COUNTRIES,
+    AMBIGUOUS_LOCATIONS,
+    SHORTLINK_HOSTS,
+    SOURCE_HOSTS,
+    APPLYURL_BLOCKLIST,
+    SENIORITY_TITLE_TERMS,
+    MAX_SENIORITY_YEARS,
+    SCRUB_PHRASES,
+};
