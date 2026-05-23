@@ -1,6 +1,6 @@
 const cron = require("node-cron");
 const { randomUUID } = require("crypto");
-const { scrapeAll } = require("../modules/scraper/scraper.fetch");
+const { scrapeAll, getAdapterByName } = require("../modules/scraper/scraper.fetch");
 const { transformBatch } = require("../modules/scraper/transformer");
 const { ingest, filterKnownJobs } = require("../modules/scraper/ingester");
 const { getProvider } = require("../modules/scraper/providers");
@@ -8,7 +8,7 @@ const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
 const notifier = require("../modules/scraper/notifier");
 const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
 
-async function runPipeline(trigger = "manual") {
+async function runPipeline(trigger = "manual", adapterList = undefined) {
     const runId = randomUUID();
     const startedAt = new Date();
     const aiProvider = getProvider().name;
@@ -23,7 +23,7 @@ async function runPipeline(trigger = "manual") {
     const adaptersFailed = [];
 
     try {
-        const scrapeResults = await scrapeAll();
+        const scrapeResults = await scrapeAll(adapterList);
 
         for (const result of scrapeResults) {
             // Check if stop was requested for this adapter
@@ -189,6 +189,20 @@ async function checkConsecutiveFailures(failedAdapters) {
 // 6:00 PM IST = 12:30 UTC
 const CRON_SCHEDULE = "30 12 * * *";
 
+// Peerlist runs on its own daily cron (09:00 UTC) and is excluded from
+// the default registry (enabled: false) so the main pipeline does not
+// double-run it.
+const PEERLIST_CRON_SCHEDULE = "0 9 * * *";
+
+async function runPeerlistPipeline(trigger = "cron") {
+    const peerlist = getAdapterByName("peerlist");
+    if (!peerlist) {
+        console.error("[Scheduler] peerlist adapter not found, skipping run");
+        return null;
+    }
+    return runPipeline(trigger, [peerlist]);
+}
+
 function init() {
     console.log(`[Scheduler] Initializing cron: ${CRON_SCHEDULE} (6PM IST daily)`);
 
@@ -201,7 +215,18 @@ function init() {
         }
     });
 
+    console.log(`[Scheduler] Initializing peerlist cron: ${PEERLIST_CRON_SCHEDULE} (09:00 UTC daily)`);
+
+    cron.schedule(PEERLIST_CRON_SCHEDULE, async () => {
+        try {
+            await runPeerlistPipeline("cron");
+        } catch (err) {
+            console.error(`[Scheduler] Peerlist cron run failed: ${err.message}`);
+            await notifier.sendCriticalAlert(`Peerlist cron run failed: ${err.message}`);
+        }
+    });
+
     console.log("[Scheduler] Cron scheduled successfully");
 }
 
-module.exports = { init, runPipeline };
+module.exports = { init, runPipeline, runPeerlistPipeline, CRON_SCHEDULE, PEERLIST_CRON_SCHEDULE };

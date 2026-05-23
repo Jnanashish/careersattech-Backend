@@ -293,10 +293,10 @@ async function scrapeOne(adapter, options = {}) {
     return { jobs, stats };
 }
 
-async function scrapeAll() {
+async function scrapeAll(adapterList = adapters) {
     const results = [];
 
-    for (const adapter of adapters) {
+    for (const adapter of adapterList) {
         if (isStopRequested(adapter.name)) {
             logger.info(`[Scraper] ${adapter.name}: stop requested, skipping`);
             results.push({
@@ -344,18 +344,18 @@ async function scrapeAll() {
     return results;
 }
 
-function getAdapterByName(name) {
-    const all = require("./adapters/index");
-    // Also check disabled adapters for testing
+function listAllAdapters() {
     const fs = require("fs");
     const path = require("path");
     const skipFiles = ["_template.js", "index.js"];
-    const allAdapters = fs
+    return fs
         .readdirSync(path.join(__dirname, "adapters"))
         .filter((file) => file.endsWith(".js") && !skipFiles.includes(file))
         .map((file) => require(path.join(__dirname, "adapters", file)));
-
-    return allAdapters.find((a) => a.name === name) || null;
 }
 
-module.exports = { scrapeOne, scrapeAll, getAdapterByName, fetchPage };
+function getAdapterByName(name) {
+    return listAllAdapters().find((a) => a.name === name) || null;
+}
+
+module.exports = { scrapeOne, scrapeAll, getAdapterByName, listAllAdapters, fetchPage };

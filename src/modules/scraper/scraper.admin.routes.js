@@ -6,7 +6,7 @@ const ScrapeLog = require("./models/scrapeLog.model");
 const JobV2 = require("../jobsV2/jobsV2.model");
 const CompanyV2 = require("../companiesV2/companiesV2.model");
 const { runPipeline } = require("../../jobs/scraper.scheduler");
-const { scrapeOne, getAdapterByName } = require("./scraper.fetch");
+const { scrapeOne, getAdapterByName, listAllAdapters } = require("./scraper.fetch");
 const { findCompanyByName } = require("./ingester");
 const { generateJobSlug, generateCompanySlug } = require("../../utils/slugify");
 const { requestStop, getAll: getStopFlags } = require("./stopFlags");
@@ -469,23 +469,46 @@ router.get("/admin/scrape/logs", async (req, res) => {
     }
 });
 
-// GET /admin/scrape/health — adapter health from latest logs
-router.get("/admin/scrape/health", async (req, res) => {
+// GET /admin/scrape/health — adapter health.
+// Enumerates every adapter file (including disabled ones such as peerlist
+// that run on their own cron) and returns the latest log entry per adapter.
+// Adapters that have never run yet appear with status "idle" so the admin
+// UI always renders one card per known adapter.
+router.get("/admin/scrape/health", async (req, res, next) => {
     try {
+        const knownAdapters = listAllAdapters();
         const latestLog = await ScrapeLog.findOne({}).sort({ startedAt: -1 });
-        if (!latestLog) {
-            return res.json({ message: "No scrape runs yet", adapters: [] });
-        }
 
-        const health = latestLog.adapters.map((a) => ({
-            name: a.name,
-            status: a.status,
-            jobsIngested: a.jobsIngested,
-            errorCount: a.errors.length,
-            lastRun: latestLog.startedAt,
-        }));
+        const health = await Promise.all(
+            knownAdapters.map(async (a) => {
+                const lastForAdapter = await ScrapeLog.findOne({ "adapters.name": a.name })
+                    .sort({ startedAt: -1 })
+                    .lean();
+                if (!lastForAdapter) {
+                    return {
+                        name: a.name,
+                        status: "idle",
+                        jobsIngested: 0,
+                        errorCount: 0,
+                        lastRun: null,
+                    };
+                }
+                const entry = lastForAdapter.adapters.find((x) => x.name === a.name);
+                return {
+                    name: a.name,
+                    status: entry.status,
+                    jobsIngested: entry.jobsIngested || 0,
+                    errorCount: (entry.errors || []).length,
+                    lastRun: lastForAdapter.startedAt,
+                };
+            })
+        );
 
-        res.json({ data: health, lastRunId: latestLog.runId, activeStopRequests: getStopFlags() });
+        res.json({
+            data: health,
+            lastRunId: latestLog ? latestLog.runId : null,
+            activeStopRequests: getStopFlags(),
+        });
     } catch (err) {
         return next(err);
     }
