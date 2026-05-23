@@ -144,7 +144,14 @@ async function buildJobV2Payload(staging, company, overrides = {}) {
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
     );
     if (!payload.datePosted || new Date(payload.datePosted) < todayUtcStart) {
-        payload.datePosted = now;
+        const scrapedAtMs = staging.scrapedAt
+            ? new Date(staging.scrapedAt).getTime()
+            : now.getTime();
+        const nowMs = now.getTime();
+        const lo = Math.min(scrapedAtMs, nowMs);
+        const hi = nowMs;
+        const randMs = lo + Math.floor(Math.random() * (hi - lo + 1));
+        payload.datePosted = new Date(randMs);
     }
 
     return payload;
