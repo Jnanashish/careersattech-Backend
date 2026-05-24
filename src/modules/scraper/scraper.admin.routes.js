@@ -9,7 +9,7 @@ const { runPipeline } = require("../../jobs/scraper.scheduler");
 const { scrapeOne, getAdapterByName, listAllAdapters } = require("./scraper.fetch");
 const { findCompanyByName } = require("./ingester");
 const { generateJobSlug, generateCompanySlug } = require("../../utils/slugify");
-const { requestStop, getAll: getStopFlags } = require("./stopFlags");
+const { requestStop, clearStop, getAll: getStopFlags } = require("./stopFlags");
 const requireAdminSecret = require("../../middleware/adminSecret");
 const asyncHandler = require("../../middleware/asyncHandler");
 const logger = require("../../utils/logger");
@@ -268,12 +268,34 @@ async function approveStagingJob(staging, overrides, approvedBy) {
     return { job: newJob };
 }
 
-// POST /admin/scrape/run — trigger manual scrape
-router.post("/admin/scrape/run", async (req, res) => {
+// POST /admin/scrape/run — trigger manual scrape.
+// Body: { adapter?: string } — when provided, runs only that adapter
+// (allowing disabled-by-default adapters like "peerlist" to be triggered
+// from the UI). When omitted, runs the default enabled registry.
+router.post("/admin/scrape/run", async (req, res, next) => {
     try {
-        // Run async, return immediately
-        res.json({ message: "Scrape run started", status: "running" });
-        runPipeline("manual").catch((err) => {
+        const adapterName = req.body && typeof req.body.adapter === "string"
+            ? req.body.adapter.trim()
+            : "";
+
+        let adapterList;
+        if (adapterName) {
+            const adapter = getAdapterByName(adapterName);
+            if (!adapter) {
+                return res.status(404).json({ error: `Adapter "${adapterName}" not found` });
+            }
+            // Clear any stale stop flag so the manual run is not aborted
+            // immediately by a previously-pressed stop button.
+            clearStop(adapterName);
+            adapterList = [adapter];
+        }
+
+        res.json({
+            message: "Scrape run started",
+            status: "running",
+            adapter: adapterName || "all",
+        });
+        runPipeline("manual", adapterList).catch((err) => {
             logger.error(`[Admin] Manual scrape run failed: ${err.message}`);
         });
     } catch (err) {
@@ -282,7 +304,7 @@ router.post("/admin/scrape/run", async (req, res) => {
 });
 
 // GET /admin/scrape/staging — list staging jobs
-router.get("/admin/scrape/staging", async (req, res) => {
+router.get("/admin/scrape/staging", async (req, res, next) => {
     try {
         const { status, page = 1, size = 20, source } = req.query;
         const filter = {};
@@ -305,7 +327,7 @@ router.get("/admin/scrape/staging", async (req, res) => {
 });
 
 // GET /admin/scrape/staging/:id — get single staging job
-router.get("/admin/scrape/staging/:id", async (req, res) => {
+router.get("/admin/scrape/staging/:id", async (req, res, next) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ error: "Invalid ID" });
@@ -319,7 +341,7 @@ router.get("/admin/scrape/staging/:id", async (req, res) => {
 });
 
 // POST /admin/scrape/staging/:id/approve — approve, ensure company, create JobV2
-router.post("/admin/scrape/staging/:id/approve", async (req, res) => {
+router.post("/admin/scrape/staging/:id/approve", async (req, res, next) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ error: "Invalid ID" });
@@ -359,7 +381,7 @@ router.post("/admin/scrape/staging/:id/approve", async (req, res) => {
 });
 
 // POST /admin/scrape/staging/:id/reject — reject with reason
-router.post("/admin/scrape/staging/:id/reject", async (req, res) => {
+router.post("/admin/scrape/staging/:id/reject", async (req, res, next) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ error: "Invalid ID" });
@@ -381,7 +403,7 @@ router.post("/admin/scrape/staging/:id/reject", async (req, res) => {
 });
 
 // POST /admin/scrape/staging/approve-bulk — approve multiple
-router.post("/admin/scrape/staging/approve-bulk", async (req, res) => {
+router.post("/admin/scrape/staging/approve-bulk", async (req, res, next) => {
     try {
         const { ids, perJobOverrides = {} } = req.body || {};
         if (!Array.isArray(ids) || ids.length === 0) {
@@ -445,7 +467,7 @@ router.post("/admin/scrape/staging/approve-bulk", async (req, res) => {
 });
 
 // DELETE /admin/scrape/staging/:id — delete staging job
-router.delete("/admin/scrape/staging/:id", async (req, res) => {
+router.delete("/admin/scrape/staging/:id", async (req, res, next) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ error: "Invalid ID" });
@@ -459,7 +481,7 @@ router.delete("/admin/scrape/staging/:id", async (req, res) => {
 });
 
 // GET /admin/scrape/logs — list recent scrape logs
-router.get("/admin/scrape/logs", async (req, res) => {
+router.get("/admin/scrape/logs", async (req, res, next) => {
     try {
         const limit = Math.min(parseInt(req.query.limit) || 20, 100);
         const logs = await ScrapeLog.find({}).sort({ startedAt: -1 }).limit(limit);
@@ -481,12 +503,18 @@ router.get("/admin/scrape/health", async (req, res, next) => {
 
         const health = await Promise.all(
             knownAdapters.map(async (a) => {
+                const base = {
+                    name: a.name,
+                    displayName: a.displayName || a.name,
+                    enabled: a.enabled !== false,
+                    manualOnly: a.enabled === false,
+                };
                 const lastForAdapter = await ScrapeLog.findOne({ "adapters.name": a.name })
                     .sort({ startedAt: -1 })
                     .lean();
                 if (!lastForAdapter) {
                     return {
-                        name: a.name,
+                        ...base,
                         status: "idle",
                         jobsIngested: 0,
                         errorCount: 0,
@@ -495,7 +523,7 @@ router.get("/admin/scrape/health", async (req, res, next) => {
                 }
                 const entry = lastForAdapter.adapters.find((x) => x.name === a.name);
                 return {
-                    name: a.name,
+                    ...base,
                     status: entry.status,
                     jobsIngested: entry.jobsIngested || 0,
                     errorCount: (entry.errors || []).length,
@@ -515,7 +543,7 @@ router.get("/admin/scrape/health", async (req, res, next) => {
 });
 
 // POST /admin/scrape/test-adapter/:name — test adapter without saving
-router.post("/admin/scrape/test-adapter/:name", async (req, res) => {
+router.post("/admin/scrape/test-adapter/:name", async (req, res, next) => {
     try {
         const adapter = getAdapterByName(req.params.name);
         if (!adapter) {
@@ -541,7 +569,7 @@ router.post("/admin/scrape/test-adapter/:name", async (req, res) => {
 });
 
 // POST /admin/scrape/stop/:adapterName — request stop of running adapter scrape
-router.post("/admin/scrape/stop/:adapterName", async (req, res) => {
+router.post("/admin/scrape/stop/:adapterName", async (req, res, next) => {
     try {
         const adapterName = req.params.adapterName;
 
