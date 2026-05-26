@@ -59,7 +59,7 @@ function buildScraperApiUrl(targetUrl, apiKey) {
 
 function isScraperApiQuotaError(err) {
     const status = err && err.response && err.response.status;
-    if (status === 401 || status === 403) return true;
+    if (status === 401 || status === 402 || status === 403) return true;
     if (status === 429) return true;
     const data = err && err.response && err.response.data;
     const body = typeof data === "string" ? data : data ? JSON.stringify(data) : "";
