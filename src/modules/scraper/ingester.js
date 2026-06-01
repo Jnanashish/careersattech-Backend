@@ -1,6 +1,10 @@
 const StagingJob = require("./models/stagingJob.model");
 const JobV2 = require("../jobsV2/jobsV2.model");
-const CompanyV2 = require("../companiesV2/companiesV2.model");
+const { findExistingCompany } = require("../../services/jobScrapeFromUrl/resolveCompany");
+
+// Backwards-compatible alias. Now backed by the shared heuristic resolver so
+// every caller (staging approval, adapters) dedupes "Adani Group"/"Adani"/etc.
+const findCompanyByName = findExistingCompany;
 
 function escapeRegex(str) {
     return String(str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -13,14 +17,6 @@ function generateFingerprint(jobData) {
         ? (jobData.jobLocation[0]?.city || "").toLowerCase().trim()
         : "";
     return `${company}_${title}_${firstCity}`.replace(/\s+/g, "-");
-}
-
-async function findCompanyByName(companyName) {
-    if (!companyName || typeof companyName !== "string") return null;
-    return CompanyV2.findOne({ companyName: companyName.trim(), deletedAt: null })
-        .collation({ locale: "en", strength: 2 })
-        .select("_id companyName")
-        .lean();
 }
 
 async function ingest(transformedJobs, adapterName, aiProvider) {
@@ -97,7 +93,7 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
 
             // Map to existing CompanyV2 if one already exists
             let matchedCompanyId = null;
-            const existingCompany = await findCompanyByName(jobData.companyName);
+            const existingCompany = await findExistingCompany(jobData.companyName);
             if (existingCompany) {
                 matchedCompanyId = existingCompany._id;
                 jobData.company = existingCompany._id;

@@ -2,6 +2,7 @@ const CompanyV2 = require("../companiesV2/companiesV2.model");
 const JobV2 = require("../jobsV2/jobsV2.model");
 const { apiErrorHandler, escapeRegex } = require("../../utils/controllerHelper");
 const { generateCompanySlug, validateSlug } = require("../../utils/slugify");
+const { findExistingCompany } = require("../../services/jobScrapeFromUrl/resolveCompany");
 
 /**
  * POST /api/admin/companies/v2 — Create a CompanyV2
@@ -22,6 +23,21 @@ exports.createCompanyV2 = async (req, res) => {
                 return res.status(409).json({ error: "A company with this slug already exists" });
             }
         } else {
+            // No explicit slug → treat as "find or warn". Catch near-duplicate
+            // names ("ABC" vs "ABC Private Limited", "Adani" vs "Adani Group")
+            // before minting a new company. An explicit slug means the admin
+            // is deliberately creating a distinct entry, so that path is skipped.
+            const heuristicMatch = await findExistingCompany(data.companyName);
+            if (heuristicMatch) {
+                return res.status(409).json({
+                    error: `A company "${heuristicMatch.companyName}" already exists and looks like the same company. Reuse it, or pass a custom slug to create a distinct entry.`,
+                    existingCompany: {
+                        _id: heuristicMatch._id,
+                        slug: heuristicMatch.slug,
+                        companyName: heuristicMatch.companyName,
+                    },
+                });
+            }
             slug = generateCompanySlug(data.companyName);
             const collision = await CompanyV2.findOne({ slug }).select("_id").lean();
             if (collision) {

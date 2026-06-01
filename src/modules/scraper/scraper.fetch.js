@@ -29,21 +29,17 @@ function stripHtml(html) {
     return $("body").text().replace(/\s+/g, " ").trim();
 }
 
-// ScraperAPI key rotation: pick by day-of-year for daily rotation,
-// fall back to next key when current key hits quota (401/403 or "quota|limit|exceed" body).
-// Exhausted keys are tracked in-memory and reset on process restart.
+// ScraperAPI key rotation: round-robin across keys so concurrent fetches
+// spread load instead of hammering a single key. Falls back to next key on
+// quota errors (401/402/403/429 or "quota|limit|exceed" body). Exhausted keys
+// are tracked in-memory and reset on process restart.
 const exhaustedKeys = new Set();
-
-function dayOfYear() {
-    const now = new Date();
-    const start = Date.UTC(now.getUTCFullYear(), 0, 0);
-    return Math.floor((now.getTime() - start) / 86400000);
-}
+let rrCursor = 0;
 
 function pickScraperKey() {
     const keys = config.scraper.scraperApiKeys;
     if (!keys || keys.length === 0) return null;
-    const startIdx = dayOfYear() % keys.length;
+    const startIdx = rrCursor++ % keys.length;
     for (let i = 0; i < keys.length; i++) {
         const idx = (startIdx + i) % keys.length;
         const k = keys[idx];

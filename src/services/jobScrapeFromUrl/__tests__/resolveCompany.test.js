@@ -50,6 +50,60 @@ describe("resolveCompany", () => {
         expect(r.slug).toMatch(/^collide-co-[a-z0-9]{4}$/);
     });
 
+    test("reuses company when only a legal/group suffix differs", async () => {
+        const existing = await CompanyV2.create({
+            companyName: "Adani Group",
+            slug: "adani-group",
+            status: "active",
+        });
+        const r = await resolveCompany("Adani");
+        expect(r.wasCreated).toBe(false);
+        expect(String(r._id)).toBe(String(existing._id));
+    });
+
+    test("reuses company stripping 'Private Limited'", async () => {
+        const existing = await CompanyV2.create({
+            companyName: "ABC Private Limited",
+            slug: "abc-private-limited",
+            status: "active",
+        });
+        const r = await resolveCompany("ABC");
+        expect(r.wasCreated).toBe(false);
+        expect(String(r._id)).toBe(String(existing._id));
+    });
+
+    test("reuses company on truncated name (prefix match)", async () => {
+        const existing = await CompanyV2.create({
+            companyName: "Adani",
+            slug: "adani",
+            status: "active",
+        });
+        const r = await resolveCompany("Ada");
+        expect(r.wasCreated).toBe(false);
+        expect(String(r._id)).toBe(String(existing._id));
+    });
+
+    test("does NOT merge genuinely different companies sharing a prefix word", async () => {
+        await CompanyV2.create({
+            companyName: "Tata Technologies",
+            slug: "tata-technologies",
+            status: "active",
+        });
+        const r = await resolveCompany("Tata Consultancy Services");
+        expect(r.wasCreated).toBe(true);
+    });
+
+    test("ignores soft-deleted companies in heuristic match", async () => {
+        await CompanyV2.create({
+            companyName: "Zeta Group",
+            slug: "zeta-group",
+            status: "active",
+            deletedAt: new Date(),
+        });
+        const r = await resolveCompany("Zeta");
+        expect(r.wasCreated).toBe(true);
+    });
+
     test("throws on empty input", async () => {
         await expect(resolveCompany("")).rejects.toThrow(/companyName is required/);
     });
