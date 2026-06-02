@@ -70,7 +70,7 @@ const config = Object.freeze({
         clickHashPepper: env.CLICK_HASH_PEPPER,
     }),
     ai: Object.freeze({
-        provider: env.AI_PROVIDER || "gemini",
+        provider: env.AI_PROVIDER || "groq",
         geminiKey: env.GEMINI_API_KEY,
         groqKey: env.GROQ_API_KEY,
         groqModel: env.GROQ_MODEL,
