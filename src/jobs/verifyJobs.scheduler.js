@@ -260,15 +260,20 @@ function init() {
         logger.error(`[verify] invalid VERIFY_JOBS_CRON: "${schedule}" — cron NOT scheduled`);
         return;
     }
-    logger.info(`[verify] scheduling cron "${schedule}"`);
+    const timezone = process.env.VERIFY_JOBS_TZ || "Asia/Kolkata";
+    logger.info(`[verify] scheduling cron "${schedule}" (tz=${timezone})`);
 
-    cron.schedule(schedule, async () => {
-        try {
-            await runVerification({ trigger: "cron" });
-        } catch (err) {
-            logger.error(`[verify] cron run failed: ${err.stack || err.message}`);
-        }
-    });
+    cron.schedule(
+        schedule,
+        async () => {
+            try {
+                await runVerification({ trigger: "cron" });
+            } catch (err) {
+                logger.error(`[verify] cron run failed: ${err.stack || err.message}`);
+            }
+        },
+        { timezone }
+    );
 }
 
 module.exports = {
