@@ -14,9 +14,19 @@ const {
 } = require("./jobsV2.controller");
 
 const {
+    triggerVerifyNow,
+    getVerifyStatus,
+    listFlaggedJobs,
+    purgeFlaggedJobs,
+} = require("./jobsV2.cleanup.controller");
+
+const {
     createJobV2Schema,
     updateJobV2Schema,
     listJobV2QuerySchema,
+    verifyNowSchema,
+    flaggedQuerySchema,
+    purgeFlaggedSchema,
     validate,
     validateQuery,
 } = require("./jobsV2.validators");
@@ -35,6 +45,15 @@ const scrapeAndPostLimiter = rateLimit({
 
 router.post("/admin/jobs/v2", requireAuth, validate(createJobV2Schema), createJobV2);
 router.get("/admin/jobs/v2", requireAuth, validateQuery(listJobV2QuerySchema), listJobsV2);
+
+// ── Apply-link verification + flagged-job cleanup ──────────────────────
+// These literal paths MUST be registered before "/admin/jobs/v2/:id", or the
+// ObjectId param route (+ validateObjectId) would swallow "verify-now"/"flagged".
+router.post("/admin/jobs/v2/verify-now", requireAuth, validate(verifyNowSchema), triggerVerifyNow);
+router.get("/admin/jobs/v2/verify-now/status", requireAuth, getVerifyStatus);
+router.get("/admin/jobs/v2/flagged", requireAuth, validateQuery(flaggedQuerySchema), listFlaggedJobs);
+router.post("/admin/jobs/v2/flagged/purge", requireAuth, validate(purgeFlaggedSchema), purgeFlaggedJobs);
+
 router.get("/admin/jobs/v2/:id", requireAuth, validateObjectId, getJobV2);
 router.patch("/admin/jobs/v2/:id", requireAuth, validateObjectId, validate(updateJobV2Schema), updateJobV2);
 router.delete("/admin/jobs/v2/:id", requireAuth, validateObjectId, deleteJobV2);
