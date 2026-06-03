@@ -11,6 +11,9 @@ jest.mock("firebase-admin", () => {
         verifyIdToken: jest.fn().mockRejectedValue(new Error("no firebase in tests")),
     });
     return {
+        // config/firebase.js guards init with `admin.apps.length`; a non-empty
+        // array means "already initialized" so initializeApp is never called.
+        apps: [{ name: "[DEFAULT]" }],
         initializeApp: jest.fn(),
         credential: { cert: jest.fn() },
         auth,

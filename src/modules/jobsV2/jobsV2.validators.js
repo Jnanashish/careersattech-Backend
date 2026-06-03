@@ -118,6 +118,30 @@ const listJobV2QuerySchema = z.object({
     company: objectIdSchema.optional(),
 });
 
+// ─── Apply-link verification / flagged-job cleanup ──────────────
+const FLAGGED_RESULT = ["expired", "inconclusive"];
+
+const verifyNowSchema = z.object({
+    limit: z.coerce.number().int().min(1).max(5000).optional(),
+});
+
+const flaggedQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    result: z.enum(FLAGGED_RESULT).optional(),
+});
+
+// Bulk soft-delete must declare intent: a non-empty id list OR all:true.
+// An empty body is rejected so a stray POST can never wipe the queue.
+const purgeFlaggedSchema = z
+    .object({
+        ids: z.array(objectIdSchema).max(1000).optional(),
+        all: z.boolean().optional(),
+    })
+    .refine((v) => (Array.isArray(v.ids) && v.ids.length > 0) || v.all === true, {
+        message: "Provide a non-empty `ids` array or `all: true`",
+    });
+
 const validate = (schema) => (req, res, next) => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
@@ -152,6 +176,9 @@ module.exports = {
     createJobV2Schema,
     updateJobV2Schema,
     listJobV2QuerySchema,
+    verifyNowSchema,
+    flaggedQuerySchema,
+    purgeFlaggedSchema,
     validate,
     validateQuery,
     JOB_STATUS,

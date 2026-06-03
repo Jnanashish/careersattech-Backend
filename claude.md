@@ -128,7 +128,18 @@ careersattech-Backend/
 - `GET /jobs-by-category` — `groupBy ∈ {jobtype, workMode, location, companytype, tags}`
 
 ### Jobs v2 admin — `/api/admin/jobs/v2` (`requireAuth` + Zod validate)
-`POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`
+`POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id` (soft-delete)
+
+Apply-link cleanup (manual, on-demand — same verifier the cron uses):
+- `POST /verify-now` — kick off a background scan of all published jobs;
+  dead links auto-archive. Returns 202; only one scan runs at a time (409).
+- `GET /verify-now/status` — `{ running, startedAt, lastRun }`.
+- `GET /flagged` — review queue: jobs with `verification.lastCheckResult ∈
+  {expired, inconclusive}` and `deletedAt: null`. `?result=`, `?page=`, `?limit=`.
+- `POST /flagged/purge` — bulk soft-delete; body `{ ids: [...] }` or
+  `{ all: true }` (empty body → 400, no accidental wipe).
+- Routes are declared **before** `/:id` so the literal paths aren't captured
+  by the ObjectId param matcher.
 
 ### Companies v2 admin — `/api/admin/companies/v2` (`requireAuth` + Zod validate)
 `POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`
