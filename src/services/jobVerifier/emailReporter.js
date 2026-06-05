@@ -72,19 +72,6 @@ function buildHtml(summary, options) {
         )
         .join("");
 
-    const inconclusiveRows = summary.inconclusiveJobs
-        .map(
-            (j) => `
-        <tr>
-          <td style="padding:6px 10px;border:1px solid #e5e7eb;font-family:monospace;font-size:12px;">${escapeHtml(j.slug)}</td>
-          <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escapeHtml(j.companyName)}</td>
-          <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escapeHtml(j.title)}</td>
-          <td style="padding:6px 10px;border:1px solid #e5e7eb;font-family:monospace;font-size:12px;">${escapeHtml(j.reason)}</td>
-          <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:center;">${j.consecutiveInconclusive}</td>
-        </tr>`
-        )
-        .join("");
-
     const banner = dryRun
         ? `<p style="background:#fef3c7;color:#92400e;padding:10px;border-radius:6px;font-family:sans-serif;"><b>DRY RUN</b> — no database writes were performed.</p>`
         : "";
@@ -105,7 +92,6 @@ function buildHtml(summary, options) {
     <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Total checked</td><td style="padding:6px 12px;border:1px solid #e5e7eb;"><b>${summary.totalChecked}</b></td></tr>
     <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Active (no change)</td><td style="padding:6px 12px;border:1px solid #e5e7eb;">${summary.activeCount}</td></tr>
     <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Expired (auto-archived)</td><td style="padding:6px 12px;border:1px solid #e5e7eb;color:#b94a48;"><b>${summary.expiredCount}</b></td></tr>
-    <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Inconclusive (skipped)</td><td style="padding:6px 12px;border:1px solid #e5e7eb;">${summary.inconclusiveCount}</td></tr>
   </table>
 
   <h3 style="font-family:sans-serif;">Auto-archived jobs (${summary.expiredCount})</h3>
@@ -118,18 +104,6 @@ function buildHtml(summary, options) {
       <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">URL</th>
     </tr></thead>
     <tbody>${archivedRows}</tbody>
-  </table>` : `<p style="font-family:sans-serif;color:#6b7280;">None.</p>`}
-
-  <h3 style="font-family:sans-serif;">Inconclusive jobs (${summary.inconclusiveCount}) — manual review suggested if a job appears here 3+ times in a row</h3>
-  ${inconclusiveRows ? `<table style="border-collapse: collapse; font-family: sans-serif;">
-    <thead><tr style="background:#f9fafb;">
-      <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Slug</th>
-      <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Company</th>
-      <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Title</th>
-      <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Reason</th>
-      <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Consecutive</th>
-    </tr></thead>
-    <tbody>${inconclusiveRows}</tbody>
   </table>` : `<p style="font-family:sans-serif;color:#6b7280;">None.</p>`}
 
   <p style="font-size:12px;color:#888;font-family:sans-serif;margin-top:24px;">Sent automatically by the CareersAt.Tech backend.</p>
@@ -150,7 +124,6 @@ function buildText(summary, options) {
     lines.push(`Total checked:           ${summary.totalChecked}`);
     lines.push(`Active (no change):      ${summary.activeCount}`);
     lines.push(`Expired (auto-archived): ${summary.expiredCount}`);
-    lines.push(`Inconclusive (skipped):  ${summary.inconclusiveCount}`);
     lines.push("");
     lines.push(`Auto-archived jobs (${summary.expiredCount}):`);
     if (!summary.archivedJobs.length) lines.push("  - none");
@@ -160,21 +133,13 @@ function buildText(summary, options) {
         lines.push(`      url:    ${j.applyLink}`);
     }
     lines.push("");
-    lines.push(`Inconclusive jobs (${summary.inconclusiveCount}):`);
-    if (!summary.inconclusiveJobs.length) lines.push("  - none");
-    for (const j of summary.inconclusiveJobs) {
-        lines.push(
-            `  - [${j.slug}] ${j.companyName} — ${j.title} (${j.reason}, consecutive=${j.consecutiveInconclusive})`
-        );
-    }
-    lines.push("");
     lines.push("Sent automatically by the CareersAt.Tech backend.");
     return lines.join("\n");
 }
 
 function buildSubject(summary, options) {
     const prefix = options.dryRun ? "[DRY RUN] " : "";
-    return `${prefix}[CareersAt.Tech] Job verifier run — ${summary.expiredCount} archived, ${summary.inconclusiveCount} inconclusive`;
+    return `${prefix}[CareersAt.Tech] Job verifier run — ${summary.expiredCount} archived`;
 }
 
 /**

@@ -63,17 +63,13 @@ async function seedAll() {
         { lastCheckResult: "expired", lastCheckedAt: new Date() },
         { status: "archived", archivedReason: "auto-verification-expired", archivedAt: new Date() }
     );
-    const inconclusive = await makeJob("inconclusive", {
-        lastCheckResult: "inconclusive",
-        lastCheckedAt: new Date(),
-    });
     const neverChecked = await makeJob("never", undefined); // lastCheckResult null
     const alreadyDeleted = await makeJob(
         "deleted",
         { lastCheckResult: "expired", lastCheckedAt: new Date() },
         { deletedAt: new Date(), status: "archived" }
     );
-    return { active, expired, inconclusive, neverChecked, alreadyDeleted };
+    return { active, expired, neverChecked, alreadyDeleted };
 }
 
 describe("GET /api/admin/jobs/v2/flagged", () => {
@@ -82,16 +78,16 @@ describe("GET /api/admin/jobs/v2/flagged", () => {
         expect(res.status).toBe(401);
     });
 
-    test("returns only expired + inconclusive, excludes active/unchecked/deleted", async () => {
-        const { expired, inconclusive } = await seedAll();
+    test("returns only expired, excludes active/unchecked/deleted", async () => {
+        const { expired } = await seedAll();
         const res = await request(app).get("/api/admin/jobs/v2/flagged").set(auth);
         expect(res.status).toBe(200);
-        expect(res.body.total).toBe(2);
+        expect(res.body.total).toBe(1);
         const slugs = res.body.jobs.map((j) => j.slug).sort();
-        expect(slugs).toEqual(["expired", "inconclusive"]);
+        expect(slugs).toEqual(["expired"]);
         // sanity: ids are the ones we expect
         const ids = res.body.jobs.map((j) => String(j._id)).sort();
-        expect(ids).toEqual([String(expired._id), String(inconclusive._id)].sort());
+        expect(ids).toEqual([String(expired._id)].sort());
     });
 
     test("?result=expired narrows the queue", async () => {
@@ -114,15 +110,15 @@ describe("GET /api/admin/jobs/v2/flagged", () => {
 
 describe("POST /api/admin/jobs/v2/flagged/purge", () => {
     test("all:true soft-deletes every flagged job, leaves the rest", async () => {
-        const { active, expired, inconclusive, neverChecked } = await seedAll();
+        const { active, expired, neverChecked } = await seedAll();
         const res = await request(app)
             .post("/api/admin/jobs/v2/flagged/purge")
             .set(auth)
             .send({ all: true });
         expect(res.status).toBe(200);
-        expect(res.body.deleted).toBe(2);
+        expect(res.body.deleted).toBe(1);
 
-        for (const id of [expired._id, inconclusive._id]) {
+        for (const id of [expired._id]) {
             const fresh = await JobV2.findById(id).lean();
             expect(fresh.deletedAt).toBeInstanceOf(Date);
             expect(fresh.status).toBe("archived");
@@ -137,7 +133,7 @@ describe("POST /api/admin/jobs/v2/flagged/purge", () => {
     });
 
     test("ids:[..] soft-deletes only the given jobs", async () => {
-        const { expired, inconclusive } = await seedAll();
+        const { active, expired } = await seedAll();
         const res = await request(app)
             .post("/api/admin/jobs/v2/flagged/purge")
             .set(auth)
@@ -145,7 +141,7 @@ describe("POST /api/admin/jobs/v2/flagged/purge", () => {
         expect(res.status).toBe(200);
         expect(res.body.deleted).toBe(1);
         expect((await JobV2.findById(expired._id).lean()).deletedAt).toBeInstanceOf(Date);
-        expect((await JobV2.findById(inconclusive._id).lean()).deletedAt).toBeNull();
+        expect((await JobV2.findById(active._id).lean()).deletedAt).toBeNull();
     });
 
     test("empty body is rejected (no accidental bulk wipe)", async () => {
@@ -175,11 +171,9 @@ describe("POST /api/admin/jobs/v2/verify-now", () => {
                     resolveRun = () =>
                         resolve({
                             totalChecked: 3,
-                            activeCount: 1,
+                            activeCount: 2,
                             expiredCount: 1,
-                            inconclusiveCount: 1,
                             archivedJobs: [],
-                            inconclusiveJobs: [],
                         });
                 })
         );

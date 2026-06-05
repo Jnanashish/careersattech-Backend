@@ -88,24 +88,24 @@ describe("verifyApplyUrl — classification", () => {
         expect(r.reason).toBe("no-expired-markers");
     });
 
-    test("7. inconclusive on timeout (rejected request)", async () => {
+    test("7. active (not archived) on timeout (rejected request)", async () => {
         mockHttp({ error: { code: "ECONNABORTED", message: "timeout of 10000ms exceeded" } });
         const r = await verifyApplyUrl("https://example.com/jobs/123");
-        expect(r.result).toBe("inconclusive");
+        expect(r.result).toBe("active");
         expect(r.reason).toBe("timeout");
     });
 
-    test("8. inconclusive on HTTP 503", async () => {
+    test("8. active (not archived) on HTTP 503", async () => {
         mockHttp({ status: 503, body: "<h1>Service Unavailable</h1>" });
         const r = await verifyApplyUrl("https://example.com/jobs/123");
-        expect(r.result).toBe("inconclusive");
+        expect(r.result).toBe("active");
         expect(r.reason).toBe("status:5xx:503");
     });
 
-    test("9. inconclusive on CAPTCHA marker", async () => {
+    test("9. active (not archived) on CAPTCHA marker", async () => {
         mockHttp({ status: 200, body: "<p>Please verify you are human before continuing.</p>" });
         const r = await verifyApplyUrl("https://example.com/jobs/123");
-        expect(r.result).toBe("inconclusive");
+        expect(r.result).toBe("active");
         expect(r.reason).toBe("captcha-or-bot-wall");
     });
 
@@ -142,31 +142,31 @@ describe("runVerification — state machine", () => {
         });
     }
 
-    test("11. lastCheckedAt is set on all three result types", async () => {
+    test("11. lastCheckedAt is set on every result type", async () => {
         const a = await makeJob("active-1");
         const e = await makeJob("expired-1");
-        const i = await makeJob("inconclusive-1");
+        const f = await makeJob("fivexx-1");
 
         // Mocks fire in the order requests are made; concurrency=5 means parallel
         // dispatch with stable ordering by sort (oldest first). All three docs
         // have lastCheckedAt=null so the order is by insertion. Mock once per job.
         mockHttp({ status: 200, body: NORMAL_BODY }); // active
         mockHttp({ status: 404 }); // expired
-        mockHttp({ status: 503 }); // inconclusive
+        mockHttp({ status: 503 }); // 5xx → active
 
         await verifyScheduler.runVerification({ trigger: "manual", skipEmail: true });
 
-        for (const id of [a._id, e._id, i._id]) {
+        for (const id of [a._id, e._id, f._id]) {
             const fresh = await JobV2.findById(id).lean();
             expect(fresh.verification.lastCheckedAt).toBeInstanceOf(Date);
             expect(fresh.verification.lastCheckResult).toBeTruthy();
         }
     });
 
-    test("12. status flips to archived only on expired", async () => {
+    test("12. status flips to archived only on expired; unconfirmed (5xx) stays published", async () => {
         const active = await makeJob("active-2");
         const expired = await makeJob("expired-2");
-        const incon = await makeJob("inconclusive-2");
+        const fivexx = await makeJob("fivexx-2");
 
         mockHttp({ status: 200, body: NORMAL_BODY });
         mockHttp({ status: 404 });
@@ -176,7 +176,7 @@ describe("runVerification — state machine", () => {
 
         const a = await JobV2.findById(active._id).lean();
         const e = await JobV2.findById(expired._id).lean();
-        const i = await JobV2.findById(incon._id).lean();
+        const f = await JobV2.findById(fivexx._id).lean();
 
         expect(a.status).toBe("published");
         expect(a.archivedAt).toBeNull();
@@ -185,42 +185,10 @@ describe("runVerification — state machine", () => {
         expect(e.archivedAt).toBeInstanceOf(Date);
         expect(e.archivedReason).toBe("auto-verification-expired");
 
-        expect(i.status).toBe("published");
-        expect(i.archivedAt).toBeNull();
-    });
-
-    test("13. consecutiveInconclusive increments on inconclusive, resets on active", async () => {
-        const job = await makeJob("flapping-1", {
-            verification: {
-                lastCheckedAt: null,
-                lastCheckResult: null,
-                lastCheckReason: null,
-                lastCheckStatusCode: null,
-                lastCheckFinalUrl: null,
-                consecutiveInconclusive: 2,
-            },
-        });
-
-        // 1) inconclusive — should go 2 → 3
-        mockHttp({ status: 503 });
-        await verifyScheduler.runVerification({
-            trigger: "manual",
-            skipEmail: true,
-            slug: "flapping-1",
-        });
-        let fresh = await JobV2.findById(job._id).lean();
-        expect(fresh.verification.consecutiveInconclusive).toBe(3);
-
-        // 2) active — should reset to 0
-        mockHttp({ status: 200, body: NORMAL_BODY });
-        await verifyScheduler.runVerification({
-            trigger: "manual",
-            skipEmail: true,
-            slug: "flapping-1",
-        });
-        fresh = await JobV2.findById(job._id).lean();
-        expect(fresh.verification.consecutiveInconclusive).toBe(0);
-        expect(fresh.status).toBe("published");
+        // 503 is unconfirmed → treated as active, never archived
+        expect(f.status).toBe("published");
+        expect(f.archivedAt).toBeNull();
+        expect(f.verification.lastCheckResult).toBe("active");
     });
 });
 

@@ -7,11 +7,10 @@ const logger = require("../../utils/logger");
 
 // Verification outcomes that put a job into the human-review queue. "expired"
 // means the apply link is dead (404/410, expired-phrase, or redirect to a
-// careers homepage) — the scan also moves those to status "archived".
-// "inconclusive" means the check couldn't confirm the link (timeout, 5xx,
-// bot-wall/CAPTCHA, or empty body) — those stay published but surface here so
-// an admin can eyeball them.
-const FLAGGED_RESULTS = ["expired", "inconclusive"];
+// careers homepage) — the scan also moves those to status "archived". Anything
+// the verifier can't confirm dead (timeout, 5xx, bot-wall/CAPTCHA, empty body)
+// is treated as "active" and never flagged.
+const FLAGGED_RESULTS = ["expired"];
 
 const FLAGGED_PROJECTION =
     "title slug companyName applyLink status archivedAt archivedReason verification datePosted createdAt";
@@ -61,7 +60,7 @@ exports.triggerVerifyNow = async (req, res) => {
         .then((summary) => {
             verifyState.finish(summary);
             logger.info(
-                `[verify:api] scan complete checked=${summary.totalChecked} archived=${summary.expiredCount} inconclusive=${summary.inconclusiveCount}`
+                `[verify:api] scan complete checked=${summary.totalChecked} archived=${summary.expiredCount}`
             );
         })
         .catch((err) => {
@@ -88,8 +87,8 @@ exports.getVerifyStatus = async (req, res) => {
 
 /**
  * GET /api/admin/jobs/v2/flagged
- * Paginated review queue of jobs whose apply link is dead/expired or whose
- * last check was inconclusive. Optional ?result=expired|inconclusive.
+ * Paginated review queue of jobs whose apply link is dead/expired.
+ * Optional ?result=expired.
  */
 exports.listFlaggedJobs = async (req, res) => {
     try {

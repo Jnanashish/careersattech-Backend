@@ -105,11 +105,6 @@ function buildJobUpdate(job, result, now) {
         set.status = "archived";
         set.archivedAt = now;
         set.archivedReason = "auto-verification-expired";
-        set["verification.consecutiveInconclusive"] = 0;
-    } else if (result.result === "active") {
-        set["verification.consecutiveInconclusive"] = 0;
-    } else if (result.result === "inconclusive") {
-        update.$inc = { "verification.consecutiveInconclusive": 1 };
     }
 
     return {
@@ -163,11 +158,9 @@ async function runVerification(opts = {}) {
     const throttle = makeDomainThrottle();
 
     const archivedJobs = [];
-    const inconclusiveJobs = [];
     const bulkOps = [];
     let activeCount = 0;
     let expiredCount = 0;
-    let inconclusiveCount = 0;
 
     await Promise.all(
         jobs.map((job) =>
@@ -193,18 +186,6 @@ async function runVerification(opts = {}) {
                         companyName: job.companyName,
                         applyLink: job.applyLink,
                         reason: result.reason,
-                    });
-                } else if (result.result === "inconclusive") {
-                    inconclusiveCount++;
-                    const prevConsec = job.verification?.consecutiveInconclusive || 0;
-                    inconclusiveJobs.push({
-                        _id: job._id,
-                        slug: job.slug,
-                        title: job.title,
-                        companyName: job.companyName,
-                        applyLink: job.applyLink,
-                        reason: result.reason,
-                        consecutiveInconclusive: prevConsec + 1,
                     });
                 } else {
                     activeCount++;
@@ -234,13 +215,11 @@ async function runVerification(opts = {}) {
         totalChecked: jobs.length,
         activeCount,
         expiredCount,
-        inconclusiveCount,
         archivedJobs,
-        inconclusiveJobs,
     };
 
     logger.info(
-        `[verify] Run complete. checked=${summary.totalChecked} active=${activeCount} archived=${expiredCount} inconclusive=${inconclusiveCount} duration=${durationMs}ms`
+        `[verify] Run complete. checked=${summary.totalChecked} active=${activeCount} archived=${expiredCount} duration=${durationMs}ms`
     );
 
     if (!skipEmail) {

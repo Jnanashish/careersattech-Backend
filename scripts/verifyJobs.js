@@ -70,7 +70,6 @@ async function main() {
         console.log(`  total checked:  ${summary.totalChecked}`);
         console.log(`  active:         ${summary.activeCount}`);
         console.log(`  archived:       ${summary.expiredCount}`);
-        console.log(`  inconclusive:   ${summary.inconclusiveCount}`);
         console.log(`  duration:       ${summary.durationMs}ms`);
         console.log("");
     } finally {
