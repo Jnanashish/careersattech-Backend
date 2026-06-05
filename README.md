@@ -22,17 +22,17 @@ The server registers three background cron schedulers on startup
   restart resumes where it left off.
 - Fetches each URL with `axios` (10 s timeout, up to 5 redirects, browser-like
   `User-Agent`).
-- Classifies the response into one of three buckets:
+- Classifies the response into one of two buckets:
   - `expired` — HTTP 404/410, body matches a phrase in
     `src/services/jobVerifier/expiredPhrases.js`, or the final URL collapsed
     onto a `/careers` / `/jobs` homepage. **Auto-archives the job**
     (`status = 'archived'`, `archivedAt = now`,
     `archivedReason = 'auto-verification-expired'`).
-  - `active` — page loaded normally, no expired markers. Updates audit fields,
-    resets `verification.consecutiveInconclusive`.
-  - `inconclusive` — timeout, DNS / TLS error, HTTP 5xx, CAPTCHA / Cloudflare
-    wall, or empty body. **Never archives.** Increments
-    `verification.consecutiveInconclusive`.
+  - `active` — anything the verifier can't confirm dead: page loaded normally
+    with no expired markers, **or** a transient failure (timeout, DNS / TLS
+    error, HTTP 5xx, CAPTCHA / Cloudflare wall, empty body). Updates audit
+    fields. **Never archives** — only a confirmed-dead link is archived, so a
+    flaky fetch never nukes a good job.
 - All updates are written as a single `bulkWrite` at the end of the run
   (saves Atlas round-trips). Concurrency is capped at `VERIFY_JOBS_CONCURRENCY`
   (default 5) and a 2-second per-hostname throttle is enforced.
@@ -103,10 +103,10 @@ The script is idempotent — safe to re-run.
 
 ### Operational notes
 
-- A job that appears 3+ runs in a row as `inconclusive`
-  (`verification.consecutiveInconclusive >= 3`) is flagged in the email and
-  warrants manual review — likely a CAPTCHA wall or a flaky host.
+- Transient failures (timeout, 5xx, CAPTCHA wall, empty body) classify as
+  `active` and are never archived. `verification.lastCheckReason` records the
+  actual cause (e.g. `timeout`, `captcha-or-bot-wall`) for audit/dashboards.
 - The verifier never re-opens a job. Once `status = 'archived'`, it is filtered
   out of subsequent runs.
-- `verification.lastCheckResult` distinguishes the three buckets even after a
+- `verification.lastCheckResult` distinguishes the two buckets even after a
   bulk-archive run, useful for audit dashboards.

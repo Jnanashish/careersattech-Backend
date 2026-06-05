@@ -14,7 +14,7 @@ const MIN_BODY_LENGTH = 200;
 
 /**
  * @typedef {Object} VerificationResult
- * @property {"expired"|"active"|"inconclusive"} result
+ * @property {"expired"|"active"} result
  * @property {string} reason
  * @property {number|null} statusCode
  * @property {string|null} finalUrl
@@ -79,7 +79,7 @@ async function verifyApplyUrl(url) {
 
     if (!url || typeof url !== "string") {
         return {
-            result: "inconclusive",
+            result: "active",
             reason: "error:missing-url",
             statusCode: null,
             finalUrl: null,
@@ -92,7 +92,7 @@ async function verifyApplyUrl(url) {
 
     if (error) {
         const reason = error.type === "timeout" ? "timeout" : `error:${error.type}`;
-        return { result: "inconclusive", reason, statusCode: null, finalUrl: null, durationMs };
+        return { result: "active", reason, statusCode: null, finalUrl: null, durationMs };
     }
 
     if (statusCode === 404 || statusCode === 410) {
@@ -107,7 +107,7 @@ async function verifyApplyUrl(url) {
 
     if (statusCode >= 500 && statusCode < 600) {
         return {
-            result: "inconclusive",
+            result: "active",
             reason: `status:5xx:${statusCode}`,
             statusCode,
             finalUrl,
@@ -120,7 +120,7 @@ async function verifyApplyUrl(url) {
     const captcha = matchedCaptcha(text);
     if (captcha) {
         return {
-            result: "inconclusive",
+            result: "active",
             reason: "captcha-or-bot-wall",
             statusCode,
             finalUrl,
@@ -151,7 +151,7 @@ async function verifyApplyUrl(url) {
 
     if (text.length < MIN_BODY_LENGTH) {
         return {
-            result: "inconclusive",
+            result: "active",
             reason: "empty-body",
             statusCode,
             finalUrl,

@@ -119,7 +119,7 @@ const listJobV2QuerySchema = z.object({
 });
 
 // ─── Apply-link verification / flagged-job cleanup ──────────────
-const FLAGGED_RESULT = ["expired", "inconclusive"];
+const FLAGGED_RESULT = ["expired"];
 
 const verifyNowSchema = z.object({
     limit: z.coerce.number().int().min(1).max(5000).optional(),

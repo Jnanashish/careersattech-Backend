@@ -19,7 +19,6 @@ const DEFAULT_VERIFICATION = {
     lastCheckReason: null,
     lastCheckStatusCode: null,
     lastCheckFinalUrl: null,
-    consecutiveInconclusive: 0,
 };
 
 async function run() {
