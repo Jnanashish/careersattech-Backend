@@ -33,7 +33,7 @@ exports.getJobs = async (req, res) => {
             const result = await Jobdesc.findOne({ _id: id }).populate({
                 path: "company",
                 select: "smallLogo largeLogo companyName companyInfo companyType",
-            });
+            }).lean();
             return jobDetailsHandler(result, res, conditions);
         } catch (err) {
             return apiErrorHandler(err, res);
@@ -98,7 +98,8 @@ exports.getJobs = async (req, res) => {
                 path: "company",
                 select: "smallLogo largeLogo companyName companyInfo companyType",
             })
-            .sort(sort);
+            .sort(sort)
+            .lean();
 
         if (!!page && !!size) {
             const limit = Math.min(Math.max(parseInt(size) || 20, 1), 100);

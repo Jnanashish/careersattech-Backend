@@ -2,6 +2,20 @@ const JobV2 = require("../jobsV2/jobsV2.model");
 const JobClickV2 = require("../jobsV2/jobClickV2.model");
 const { apiErrorHandler } = require("../../utils/controllerHelper");
 
+// Only ever 302 to these schemes. Apply links are admin/scraper-set, but the
+// JobV2 schema doesn't constrain the scheme, so guard the redirect itself
+// against `javascript:` / `data:` / `file:` payloads.
+const ALLOWED_REDIRECT_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+function isSafeRedirect(link) {
+    if (typeof link !== "string" || !link) return false;
+    try {
+        return ALLOWED_REDIRECT_PROTOCOLS.has(new URL(link).protocol);
+    } catch {
+        return false;
+    }
+}
+
 function buildClickDoc(jobId, eventType, req, referrerOverride) {
     return {
         job: jobId,
@@ -42,6 +56,10 @@ exports.applyRedirect = async (req, res) => {
             return res.status(404).json({ error: "Job not found" });
         }
 
+        if (!isSafeRedirect(job.applyLink)) {
+            return res.status(404).json({ error: "Job not found" });
+        }
+
         logClick(buildClickDoc(job._id, "apply_click", req));
         incrStat(job._id, "stats.applyClicks");
 
@@ -77,3 +95,5 @@ exports.logView = async (req, res) => {
         return apiErrorHandler(err, res);
     }
 };
+
+exports._internals = { isSafeRedirect };

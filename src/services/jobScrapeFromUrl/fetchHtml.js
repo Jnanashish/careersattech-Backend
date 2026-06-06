@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { isPublicHttpUrl, guardedAxiosAgents } = require("../../utils/urlGuard");
 
 const USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -62,6 +63,11 @@ async function fetchHtml(url, options = {}) {
         || Number(process.env.MAX_SCRAPE_HTML_BYTES)
         || DEFAULT_MAX_BYTES;
 
+    // SSRF guard (layer 1): refuse private / non-HTTP(S) targets before dialling.
+    if (!isPublicHttpUrl(url)) {
+        throw new FetchBlockedError("Refusing to fetch a non-public or non-HTTP(S) URL", { url });
+    }
+
     let response;
     try {
         response = await axios.get(url, {
@@ -72,6 +78,9 @@ async function fetchHtml(url, options = {}) {
             responseType: "text",
             transformResponse: [(data) => data],
             validateStatus: () => true,
+            // SSRF guard (layer 2): block private addresses at connect time, incl.
+            // redirect hops and DNS-rebinding.
+            ...guardedAxiosAgents,
             headers: {
                 "User-Agent": USER_AGENT,
                 Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -79,6 +88,9 @@ async function fetchHtml(url, options = {}) {
             },
         });
     } catch (err) {
+        if (err.code === "SSRF_BLOCKED") {
+            throw new FetchBlockedError("Refusing to fetch a private address", { url });
+        }
         if (err.code === "ECONNABORTED" || err.code === "ETIMEDOUT") {
             throw new FetchTimeoutError(`Fetch timed out after ${TIMEOUT_MS}ms`, { url });
         }
@@ -94,6 +106,10 @@ async function fetchHtml(url, options = {}) {
     const finalUrl = response.request?.res?.responseUrl || url;
     const contentType = response.headers?.["content-type"] || "";
     const html = typeof response.data === "string" ? response.data : "";
+
+    if (finalUrl !== url && !isPublicHttpUrl(finalUrl)) {
+        throw new FetchBlockedError("Redirect chain reached a non-public URL", { url: finalUrl });
+    }
 
     if (html.length > maxBytes) {
         throw new FetchTooLargeError(`Response exceeded ${maxBytes} bytes`, { url });

@@ -5,7 +5,7 @@ const { filterKnownUrls } = require("./ingester");
 const { isStopRequested } = require("./stopFlags");
 const config = require("../../config");
 const logger = require("../../utils/logger");
-const { isPublicHttpsUrl } = require("../../utils/urlGuard");
+const { isPublicHttpsUrl, guardedAxiosAgents } = require("../../utils/urlGuard");
 
 const USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -96,6 +96,7 @@ async function fetchPage(url, headers = {}) {
                 headers: {},
                 timeout: 30000,
                 maxRedirects: 3,
+                ...guardedAxiosAgents,
             });
             return response.data;
         } catch (err) {
@@ -118,6 +119,7 @@ async function fetchPage(url, headers = {}) {
         headers: directHeaders,
         timeout: 15000,
         maxRedirects: 3,
+        ...guardedAxiosAgents,
     });
 
     if (response.request && response.request.res && response.request.res.responseUrl) {

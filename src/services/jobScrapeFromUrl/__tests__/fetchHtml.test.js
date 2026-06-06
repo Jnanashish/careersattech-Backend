@@ -87,4 +87,26 @@ describe("fetchHtml", () => {
         const r = await fetchHtml(URL);
         expect(r.finalUrl).toBe(finalUrl);
     });
+
+    test("SSRF: private target is blocked before any request", async () => {
+        await expect(
+            fetchHtml("http://169.254.169.254/latest/meta-data/")
+        ).rejects.toBeInstanceOf(FetchBlockedError);
+        expect(axios.get).not.toHaveBeenCalled();
+    });
+
+    test("SSRF: encoded-IP loopback target is blocked", async () => {
+        await expect(fetchHtml("https://2130706433/")).rejects.toBeInstanceOf(FetchBlockedError);
+        expect(axios.get).not.toHaveBeenCalled();
+    });
+
+    test("SSRF: non-HTTP scheme is blocked", async () => {
+        await expect(fetchHtml("file:///etc/passwd")).rejects.toBeInstanceOf(FetchBlockedError);
+        expect(axios.get).not.toHaveBeenCalled();
+    });
+
+    test("SSRF: redirect to a private finalUrl throws FetchBlockedError", async () => {
+        axios.get.mockResolvedValueOnce(ok("<html>ok</html>", { finalUrl: "http://127.0.0.1/internal" }));
+        await expect(fetchHtml(URL)).rejects.toBeInstanceOf(FetchBlockedError);
+    });
 });

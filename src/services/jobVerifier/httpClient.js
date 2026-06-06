@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { isPublicHttpUrl, guardedAxiosAgents } = require("../../utils/urlGuard");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_REDIRECTS = 5;
@@ -27,6 +28,17 @@ async function fetchUrl(url, opts = {}) {
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const maxRedirects = opts.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
 
+    // SSRF guard: never let a stored apply link point the verifier at an
+    // internal host. Surfaced as a `blocked` error → caller marks inconclusive.
+    if (!isPublicHttpUrl(url)) {
+        return {
+            statusCode: null,
+            finalUrl: null,
+            body: "",
+            error: { type: "blocked", message: "non-public or non-HTTP(S) URL" },
+        };
+    }
+
     try {
         const res = await axios.get(url, {
             timeout: timeoutMs,
@@ -34,6 +46,8 @@ async function fetchUrl(url, opts = {}) {
             validateStatus: () => true,
             headers: DEFAULT_HEADERS,
             responseType: "text",
+            // Block private addresses at connect time, including redirect hops.
+            ...guardedAxiosAgents,
             // Accept all status codes; we want the body even on 404.
             transformResponse: [(d) => (typeof d === "string" ? d : String(d ?? ""))],
         });
@@ -63,6 +77,7 @@ async function fetchUrl(url, opts = {}) {
 function classifyError(err) {
     if (!err) return { type: "unknown", message: "unknown error" };
     const code = err.code || "";
+    if (code === "SSRF_BLOCKED") return { type: "blocked", message: err.message };
     if (code === "ECONNABORTED" || /timeout/i.test(err.message || "")) {
         return { type: "timeout", message: err.message };
     }
