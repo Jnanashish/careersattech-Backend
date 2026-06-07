@@ -116,6 +116,9 @@ const listJobV2QuerySchema = z.object({
     status: z.enum(JOB_STATUS).optional(),
     search: z.string().max(200).optional(),
     company: objectIdSchema.optional(),
+    // Active-tab scope: when "true", exclude archived jobs. An explicit `status`
+    // takes precedence over this flag (see listJobsV2 controller).
+    excludeArchived: z.enum(["true", "false"]).optional(),
 });
 
 // ─── Apply-link verification / flagged-job cleanup ──────────────

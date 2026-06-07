@@ -1,6 +1,7 @@
 const JobV2 = require("../jobsV2/jobsV2.model");
 const { apiErrorHandler } = require("../../utils/controllerHelper");
 const { generateJobSlug, validateSlug } = require("../../utils/slugify");
+const { archiveJob, restoreJob, MANUAL_ARCHIVE_REASON } = require("./jobsV2.lifecycle");
 
 const MAX_SLUG_ATTEMPTS = 5;
 
@@ -66,13 +67,16 @@ exports.createJobV2 = async (req, res) => {
  */
 exports.listJobsV2 = async (req, res) => {
     try {
-        const { page = 1, limit = 20, status, search, company } = req.validatedQuery || {};
+        const { page = 1, limit = 20, status, search, company, excludeArchived } =
+            req.validatedQuery || {};
         const pageNum = Math.max(parseInt(page) || 1, 1);
         const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
         const skip = (pageNum - 1) * pageSize;
 
         const conditions = { deletedAt: null };
+        // Explicit status wins; otherwise the Active tab asks to hide archived.
         if (status) conditions.status = status;
+        else if (excludeArchived === "true") conditions.status = { $ne: "archived" };
         if (company) conditions.company = company;
         if (search) conditions.$text = { $search: search };
 
@@ -157,21 +161,77 @@ exports.updateJobV2 = async (req, res) => {
 };
 
 /**
- * DELETE /api/admin/jobs/v2/:id — Soft delete
+ * POST /api/admin/jobs/v2/:id/archive — Soft-archive (the default removal).
+ *
+ * Sets status="archived" + archivedAt + archivedReason="manual". Does NOT set
+ * deletedAt, so the job drops out of public browse/search/sitemap but its detail
+ * URL still resolves (frontend can render an "expired" state). Reversible via
+ * the restore endpoint.
  */
-exports.deleteJobV2 = async (req, res) => {
+exports.archiveJobV2 = async (req, res) => {
     try {
-        const updated = await JobV2.findOneAndUpdate(
-            { _id: req.params.id, deletedAt: null },
-            { $set: { deletedAt: new Date(), status: "archived" } },
-            { new: true }
-        );
-
-        if (!updated) return res.status(404).json({ error: "Job not found" });
+        const job = await archiveJob(req.params.id, MANUAL_ARCHIVE_REASON);
+        if (!job) return res.status(404).json({ error: "Job not found" });
 
         return res.status(200).json({
             message: "Job archived",
-            data: { _id: updated._id, deletedAt: updated.deletedAt, status: updated.status },
+            data: {
+                _id: job._id,
+                status: job.status,
+                archivedAt: job.archivedAt,
+                archivedReason: job.archivedReason,
+            },
+        });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
+};
+
+/**
+ * POST /api/admin/jobs/v2/:id/restore — Undo an archive.
+ *
+ * Sets status="published", clears archivedAt + archivedReason. Only acts on a
+ * currently-archived, non-deleted job. The parent company's openJobsCount is
+ * computed live (countDocuments status:"published"), so it self-heals — nothing
+ * to increment here.
+ */
+exports.restoreJobV2 = async (req, res) => {
+    try {
+        const job = await restoreJob(req.params.id);
+        if (!job) return res.status(404).json({ error: "Job not found or not archived" });
+
+        return res.status(200).json({
+            message: "Job restored",
+            data: { _id: job._id, status: job.status, archivedAt: job.archivedAt },
+        });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
+};
+
+/**
+ * DELETE /api/admin/jobs/v2/:id — Permanent hard-delete. GUARDED.
+ *
+ * Archiving is the default (POST /:id/archive). This route refuses unless the
+ * caller opts in with ?permanent=true, so a stray DELETE can never destroy data.
+ * Reserved for genuine junk; the document is removed irrecoverably.
+ */
+exports.deleteJobV2 = async (req, res) => {
+    try {
+        const permanent = req.query.permanent === "true" || req.query.permanent === true;
+        if (!permanent) {
+            return res.status(400).json({
+                error:
+                    "Refusing to hard-delete. Use POST /api/admin/jobs/v2/:id/archive to archive (default), or pass ?permanent=true to permanently delete.",
+            });
+        }
+
+        const deleted = await JobV2.findOneAndDelete({ _id: req.params.id });
+        if (!deleted) return res.status(404).json({ error: "Job not found" });
+
+        return res.status(200).json({
+            message: "Job permanently deleted",
+            data: { _id: deleted._id, slug: deleted.slug },
         });
     } catch (err) {
         return apiErrorHandler(err, res);

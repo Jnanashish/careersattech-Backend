@@ -222,11 +222,17 @@ exports.listJobs = async (req, res) => {
     }
 };
 
+// Detail still resolves archived/expired jobs (not just published) so the
+// frontend can render an "expired" state instead of a 404. Draft (never public)
+// and soft-deleted jobs stay hidden. `status` + `archivedAt` ride along in the
+// spread so the client can drop the JobPosting schema for non-live jobs.
+const DETAIL_VISIBLE_STATUSES = ["published", "archived", "expired"];
+
 exports.getJobBySlug = async (req, res) => {
     try {
         const job = await JobV2.findOne({
             slug: String(req.params.slug),
-            status: "published",
+            status: { $in: DETAIL_VISIBLE_STATUSES },
             deletedAt: null,
         })
             .populate("company", PUBLIC_COMPANY_FULL)
@@ -234,12 +240,16 @@ exports.getJobBySlug = async (req, res) => {
 
         if (!job) return jsonNotFound(res, "Job not found");
 
-        const isExpired =
-            job.validThrough instanceof Date
-                ? job.validThrough.getTime() < Date.now()
-                : job.validThrough && new Date(job.validThrough).getTime() < Date.now();
+        const isArchived = job.status === "archived" || job.status === "expired";
+        const isDateExpired = job.validThrough
+            ? new Date(job.validThrough).getTime() < Date.now()
+            : false;
 
-        return res.status(200).json({ ...job, isExpired: !!isExpired });
+        return res.status(200).json({
+            ...job,
+            isArchived,
+            isExpired: isArchived || isDateExpired,
+        });
     } catch (err) {
         return jsonError(res, err);
     }
@@ -255,7 +265,9 @@ exports.resolveLegacyId = async (req, res) => {
 
         const doc = await JobV2.findOne({ $or: orClauses }).select("slug status deletedAt").lean();
         if (!doc) return jsonGone(res);
-        if (doc.status !== "published" || doc.deletedAt) return jsonGone(res);
+        // Resolve to the slug for any job whose detail page still renders
+        // (published or archived/expired); draft + soft-deleted stay 410 Gone.
+        if (doc.deletedAt || !DETAIL_VISIBLE_STATUSES.includes(doc.status)) return jsonGone(res);
 
         return res.status(200).json({ slug: doc.slug });
     } catch (err) {

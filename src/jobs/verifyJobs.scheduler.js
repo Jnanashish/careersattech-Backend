@@ -3,6 +3,7 @@ const logger = require("../utils/logger");
 const JobV2 = require("../modules/jobsV2/jobsV2.model");
 const { verifyJob } = require("../services/jobVerifier");
 const emailReporter = require("../services/jobVerifier/emailReporter");
+const { buildArchiveFields, AUTO_EXPIRY_REASON } = require("../modules/jobsV2/jobsV2.lifecycle");
 
 const DEFAULT_CRON = "0 3 */3 * *"; // every 3 days at 3 AM
 const DEFAULT_CONCURRENCY = 5;
@@ -102,9 +103,9 @@ function buildJobUpdate(job, result, now) {
     const update = { $set: set };
 
     if (result.result === "expired") {
-        set.status = "archived";
-        set.archivedAt = now;
-        set.archivedReason = "auto-verification-expired";
+        // Same archive shape as the admin endpoint (single source of truth);
+        // merged into the bulkWrite $set instead of a per-doc archiveJob() call.
+        Object.assign(set, buildArchiveFields(AUTO_EXPIRY_REASON, now));
         set["verification.consecutiveInconclusive"] = 0;
     } else if (result.result === "active") {
         set["verification.consecutiveInconclusive"] = 0;

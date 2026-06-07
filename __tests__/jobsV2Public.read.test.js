@@ -62,10 +62,11 @@ describe("GET /api/jobs/v2", () => {
         expect(res.body.data[0].seo).toBeUndefined();
     });
 
-    it("excludes draft and soft-deleted jobs", async () => {
+    it("excludes draft, archived, and soft-deleted jobs", async () => {
         const c = await makeCompany();
         await makeJob("pub", c);
         await makeJob("draft", c, { status: "draft" });
+        await makeJob("archived", c, { status: "archived", archivedAt: new Date() });
         await makeJob("deleted", c, { deletedAt: new Date() });
 
         const res = await request(app).get("/api/jobs/v2");
@@ -174,6 +175,29 @@ describe("GET /api/jobs/v2/:slug", () => {
         const res = await request(app).get("/api/jobs/v2/old");
         expect(res.status).toBe(200);
         expect(res.body.isExpired).toBe(true);
+    });
+
+    it("still resolves an archived job (200) with status + isArchived for the expired state", async () => {
+        const c = await makeCompany();
+        await makeJob("gone-but-visible", c, {
+            status: "archived",
+            archivedAt: new Date(),
+            archivedReason: "manual",
+        });
+        const res = await request(app).get("/api/jobs/v2/gone-but-visible");
+        expect(res.status).toBe(200);
+        expect(res.body.slug).toBe("gone-but-visible");
+        expect(res.body.status).toBe("archived");
+        expect(res.body.isArchived).toBe(true);
+        expect(res.body.isExpired).toBe(true);
+        expect(res.body.archivedAt).toBeTruthy();
+    });
+
+    it("does NOT resolve a draft job (404)", async () => {
+        const c = await makeCompany();
+        await makeJob("secret-draft", c, { status: "draft" });
+        const res = await request(app).get("/api/jobs/v2/secret-draft");
+        expect(res.status).toBe(404);
     });
 });
 

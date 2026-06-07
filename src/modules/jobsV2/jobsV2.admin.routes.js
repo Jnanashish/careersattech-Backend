@@ -11,6 +11,8 @@ const {
     getJobV2,
     updateJobV2,
     deleteJobV2,
+    archiveJobV2,
+    restoreJobV2,
 } = require("./jobsV2.controller");
 
 const {
@@ -56,6 +58,11 @@ router.post("/admin/jobs/v2/flagged/purge", requireAuth, validate(purgeFlaggedSc
 
 router.get("/admin/jobs/v2/:id", requireAuth, validateObjectId, getJobV2);
 router.patch("/admin/jobs/v2/:id", requireAuth, validateObjectId, validate(updateJobV2Schema), updateJobV2);
+
+// Lifecycle: archive is the default removal; restore undoes it. Hard-delete
+// lives on DELETE and refuses unless ?permanent=true (see controller).
+router.post("/admin/jobs/v2/:id/archive", requireAuth, validateObjectId, archiveJobV2);
+router.post("/admin/jobs/v2/:id/restore", requireAuth, validateObjectId, restoreJobV2);
 router.delete("/admin/jobs/v2/:id", requireAuth, validateObjectId, deleteJobV2);
 
 router.post(
