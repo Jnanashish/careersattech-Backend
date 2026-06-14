@@ -186,47 +186,50 @@ async function checkConsecutiveFailures(failedAdapters) {
     }
 }
 
-// 6:00 PM IST = 12:30 UTC
-const CRON_SCHEDULE = "30 12 * * *";
+// Each source runs on its own daily cron, staggered 2 hours apart, so the
+// scraper-API keys and the AI provider never get hit by all five sources at
+// once. Times are IST (pinned via SCRAPER_TZ below). Anchored on the original
+// 6 PM IST slot (onlyfrontendjobs). Each cron runs the full pipeline for a
+// single adapter via runPipeline(trigger, [adapter]).
+const SCRAPER_TZ = process.env.SCRAPER_TZ || "Asia/Kolkata";
 
-// Peerlist runs on its own daily cron (09:00 UTC) and is excluded from
-// the default registry (enabled: false) so the main pipeline does not
-// double-run it.
-const PEERLIST_CRON_SCHEDULE = "0 9 * * *";
-
-async function runPeerlistPipeline(trigger = "cron") {
-    const peerlist = getAdapterByName("peerlist");
-    if (!peerlist) {
-        console.error("[Scheduler] peerlist adapter not found, skipping run");
-        return null;
-    }
-    return runPipeline(trigger, [peerlist]);
-}
+const ADAPTER_SCHEDULES = [
+    { name: "freshershunt", cron: "0 12 * * *" },     // 12:00 IST
+    { name: "freshersjobs", cron: "0 14 * * *" },     // 14:00 IST
+    { name: "offcampusjobs4u", cron: "0 16 * * *" },  // 16:00 IST
+    { name: "onlyfrontendjobs", cron: "0 18 * * *" }, // 18:00 IST (6 PM)
+    { name: "peerlist", cron: "0 20 * * *" },         // 20:00 IST
+];
 
 function init() {
-    console.log(`[Scheduler] Initializing cron: ${CRON_SCHEDULE} (6PM IST daily)`);
+    console.log(
+        `[Scheduler] Staggering ${ADAPTER_SCHEDULES.length} adapters 2h apart (tz=${SCRAPER_TZ})`
+    );
 
-    cron.schedule(CRON_SCHEDULE, async () => {
-        try {
-            await runPipeline("cron");
-        } catch (err) {
-            console.error(`[Scheduler] Cron run failed: ${err.message}`);
-            await notifier.sendCriticalAlert(`Cron run failed: ${err.message}`);
+    for (const { name, cron: schedule } of ADAPTER_SCHEDULES) {
+        const adapter = getAdapterByName(name);
+        if (!adapter) {
+            console.warn(`[Scheduler] adapter "${name}" not found, skipping its schedule`);
+            continue;
         }
-    });
 
-    console.log(`[Scheduler] Initializing peerlist cron: ${PEERLIST_CRON_SCHEDULE} (09:00 UTC daily)`);
+        console.log(`[Scheduler] ${name}: "${schedule}" (${SCRAPER_TZ})`);
 
-    cron.schedule(PEERLIST_CRON_SCHEDULE, async () => {
-        try {
-            await runPeerlistPipeline("cron");
-        } catch (err) {
-            console.error(`[Scheduler] Peerlist cron run failed: ${err.message}`);
-            await notifier.sendCriticalAlert(`Peerlist cron run failed: ${err.message}`);
-        }
-    });
+        cron.schedule(
+            schedule,
+            async () => {
+                try {
+                    await runPipeline("cron", [adapter]);
+                } catch (err) {
+                    console.error(`[Scheduler] Cron run failed for ${name}: ${err.message}`);
+                    await notifier.sendCriticalAlert(`Cron run failed for ${name}: ${err.message}`);
+                }
+            },
+            { timezone: SCRAPER_TZ }
+        );
+    }
 
     console.log("[Scheduler] Cron scheduled successfully");
 }
 
-module.exports = { init, runPipeline, runPeerlistPipeline, CRON_SCHEDULE, PEERLIST_CRON_SCHEDULE };
+module.exports = { init, runPipeline, ADAPTER_SCHEDULES };

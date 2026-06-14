@@ -73,6 +73,16 @@ const config = Object.freeze({
         provider: env.AI_PROVIDER || "groq",
         geminiKey: env.GEMINI_API_KEY,
         groqKey: env.GROQ_API_KEY,
+        // Round-robin pool: requests rotate across these Groq keys so load
+        // spreads over multiple accounts instead of spiking one key's rate
+        // limit. GROQ_API_KEY kept as a back-compat single-key fallback.
+        groqKeys: Object.freeze([
+            ...new Set(
+                [env.GROQ_API_KEY_1, env.GROQ_API_KEY_2, env.GROQ_API_KEY]
+                    .map((k) => (typeof k === "string" ? k.trim() : ""))
+                    .filter(Boolean)
+            ),
+        ]),
         groqModel: env.GROQ_MODEL,
         claudeKey: env.CLAUDE_API_KEY,
         claudeModel: env.CLAUDE_MODEL,
