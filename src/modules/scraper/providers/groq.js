@@ -14,9 +14,7 @@ let rrCursor = 0;
 function getKeys() {
     const keys = config.ai.groqKeys;
     if (!keys || keys.length === 0) {
-        throw new Error(
-            "[Groq] No Groq API key set (GROQ_API_KEY_1 / GROQ_API_KEY_2 / GROQ_API_KEY)"
-        );
+        throw new Error("[Groq] No Groq API key set (GROQ_API_KEY_1 / GROQ_API_KEY_2)");
     }
     return keys;
 }
