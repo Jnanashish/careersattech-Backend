@@ -1,4 +1,15 @@
-// Set required env vars BEFORE any module that reads them on import
+// Set required env vars BEFORE any module that reads them on import.
+// config/index.js exits the process if any of these are missing. Locally they
+// come from .env via dotenv; CI (GitHub Actions) has no .env, so stub them here.
+// Values are dummies — the DB is mongodb-memory-server and Firebase/Cloudinary
+// are mocked below, so none of these are ever used for real connections.
+process.env.DATABASE = process.env.DATABASE || "mongodb://127.0.0.1/test";
+process.env.CLOUD_NAME = process.env.CLOUD_NAME || "test";
+process.env.API_KEY = process.env.API_KEY || "test";
+process.env.API_SECRET = process.env.API_SECRET || "test";
+process.env.FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "test";
+process.env.FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY || "test";
+process.env.FIREBASE_CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL || "test@test.com";
 process.env.ADMIN_API_KEY = "test-secret-key";
 process.env.ADMIN_SECRET = "test-admin-secret";
 process.env.CLICK_HASH_PEPPER = "test-pepper";

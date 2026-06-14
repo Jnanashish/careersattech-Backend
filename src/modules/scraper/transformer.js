@@ -1,11 +1,36 @@
 const fs = require("fs");
 const path = require("path");
 const { getProvider } = require("./providers");
+const { findExistingCompany } = require("../../services/jobScrapeFromUrl/resolveCompany");
 
-const SYSTEM_PROMPT = fs.readFileSync(
+const RAW_PROMPT = fs.readFileSync(
     path.join(__dirname, "prompts", "transformer.md"),
     "utf8"
 );
+
+// The prompt carries two mutually-exclusive section types, marked inline:
+//   <<NEW_COMPANY>>...<</NEW_COMPANY>>       — kept only when the company is new
+//   <<EXISTING_COMPANY>>...<</EXISTING_COMPANY>> — kept only when it already exists
+// Everything OUTSIDE these markers (the entire "job" field spec, salary rules)
+// is shared verbatim, so the job instructions are byte-identical across both
+// variants. Render once at load: drop the opposite sections, unwrap the kept
+// ones, and tidy the blank lines the stripping leaves behind.
+function renderPrompt(template, { keep, drop }) {
+    const dropRe = new RegExp(`<<${drop}>>[\\s\\S]*?<<\\/${drop}>>`, "g");
+    const keepRe = new RegExp(`<<${keep}>>|<<\\/${keep}>>`, "g");
+    return template
+        .replace(dropRe, "")
+        .replace(keepRe, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+
+// Full job + company enrichment (company not yet in our DB).
+const FULL_PROMPT = renderPrompt(RAW_PROMPT, { keep: "NEW_COMPANY", drop: "EXISTING_COMPANY" });
+// Job only — company already exists, so we never regenerate its details.
+const JOB_ONLY_PROMPT = renderPrompt(RAW_PROMPT, { keep: "EXISTING_COMPANY", drop: "NEW_COMPANY" });
+// Back-compat export: the full prompt is the historical default.
+const SYSTEM_PROMPT = FULL_PROMPT;
 
 const VALID_EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACTOR", "INTERN", "TEMPORARY"];
 const VALID_DISPLAY_MODES = ["internal", "external_redirect"];
@@ -212,21 +237,35 @@ async function transform(rawJob) {
     const provider = getProvider();
     const maxAttempts = 3;
 
+    // Route the prompt on whether the company is already in our DB. The only
+    // pre-LLM name signal is the adapter-supplied meta.company (some adapters
+    // leave it null). When we can match an existing company, switch to the
+    // job-only prompt so the AI never regenerates company details — the
+    // existing record is left untouched. When there's no name or no match, fall
+    // back to the full prompt. Linking stays the ingester's job (it re-resolves
+    // by name), so a stale/false pre-match can never overwrite a real company.
+    const candidateName =
+        rawJob.meta && typeof rawJob.meta.company === "string" ? rawJob.meta.company.trim() : "";
+    const existingCompany = candidateName ? await findExistingCompany(candidateName) : null;
+    const systemPrompt = existingCompany ? JOB_ONLY_PROMPT : FULL_PROMPT;
+
     const userMessage = JSON.stringify({
         sourceUrl: rawJob.sourceUrl,
         companyPageUrl: rawJob.companyPageUrl,
         meta: rawJob.meta,
         pageContent: rawJob.pageContent,
         companyPageContent: rawJob.companyPageContent,
+        existingCompany: existingCompany ? { companyName: existingCompany.companyName } : null,
     });
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             console.log(
-                `[Transformer] Transforming job from ${rawJob.sourceUrl} (attempt ${attempt}, provider: ${provider.name})`
+                `[Transformer] Transforming job from ${rawJob.sourceUrl} (attempt ${attempt}, provider: ${provider.name}, ` +
+                `company: ${existingCompany ? `existing "${existingCompany.companyName}" → job-only prompt` : "new → full prompt"})`
             );
 
-            let response = await provider.complete(SYSTEM_PROMPT, userMessage);
+            let response = await provider.complete(systemPrompt, userMessage);
 
             // Strip markdown code blocks if AI wraps in them
             response = response.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
@@ -239,18 +278,28 @@ async function transform(rawJob) {
             if (!parsed.job || typeof parsed.job !== "object") {
                 throw new Error("Missing required key: job");
             }
-            if (!parsed.company || typeof parsed.company !== "object") {
-                throw new Error("Missing required key: company");
-            }
 
             const job = normalizeJob(parsed.job, rawJob);
-            const company = normalizeCompany(parsed.company, rawJob);
 
             if (!job.title) throw new Error("Missing required field: job.title");
-            if (!company.companyName) throw new Error("Missing required field: company.companyName");
             if (!job.applyLink) throw new Error("Missing required field: job.applyLink");
             if (job.displayMode === "internal" && !job.jobDescription.html) {
                 throw new Error("job.jobDescription.html is required when displayMode is 'internal'");
+            }
+
+            // Existing company: carry only the canonical name forward — never
+            // regenerate or update its details. The ingester re-resolves this
+            // name and links the job back to the same CompanyV2 record.
+            // New company: take the AI-enriched block as before.
+            let company;
+            if (existingCompany) {
+                company = { companyName: existingCompany.companyName };
+            } else {
+                if (!parsed.company || typeof parsed.company !== "object") {
+                    throw new Error("Missing required key: company");
+                }
+                company = normalizeCompany(parsed.company, rawJob);
+                if (!company.companyName) throw new Error("Missing required field: company.companyName");
             }
 
             console.log(`[Transformer] Successfully transformed: ${job.title} @ ${company.companyName}`);
@@ -297,4 +346,4 @@ async function transformBatch(rawJobs) {
     return { results, errors };
 }
 
-module.exports = { transform, transformBatch, SYSTEM_PROMPT };
+module.exports = { transform, transformBatch, SYSTEM_PROMPT, FULL_PROMPT, JOB_ONLY_PROMPT };

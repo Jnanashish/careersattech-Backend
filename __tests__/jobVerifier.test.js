@@ -124,9 +124,12 @@ describe("verifyApplyUrl — classification", () => {
 // ─── State machine tests via runVerification ────────────────────────────
 describe("runVerification — state machine", () => {
     async function makeJob(slug, overrides = {}) {
+        // Unique company per job — companies_v2 has a unique case-insensitive
+        // collation index on companyName, so a constant name collides (E11000)
+        // when a single test creates multiple jobs.
         const company = await CompanyV2.create({
-            companyName: "VerifyCo",
-            slug: "verifyco-" + Math.random().toString(36).slice(2, 8),
+            companyName: "VerifyCo-" + slug,
+            slug: "verifyco-" + slug,
         });
         return JobV2.create({
             title: "Test Job",
