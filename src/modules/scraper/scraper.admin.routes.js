@@ -8,7 +8,8 @@ const CompanyV2 = require("../companiesV2/companiesV2.model");
 const { runPipeline } = require("../../jobs/scraper.scheduler");
 const { scrapeOne, getAdapterByName, listAllAdapters } = require("./scraper.fetch");
 const { findCompanyByName } = require("./ingester");
-const { generateJobSlug, generateCompanySlug } = require("../../utils/slugify");
+const { generateCompanySlug } = require("../../utils/slugify");
+const { resolveUniqueJobSlug } = require("../jobsV2/resolveJobSlug");
 const { requestStop, clearStop, getAll: getStopFlags } = require("./stopFlags");
 const requireAdminSecret = require("../../middleware/adminSecret");
 const asyncHandler = require("../../middleware/asyncHandler");
@@ -118,14 +119,7 @@ function duplicateKeyMessage(err) {
 async function buildJobV2Payload(staging, company, overrides = {}) {
     const jobData = staging.jobData?.toObject ? staging.jobData.toObject() : { ...staging.jobData };
 
-    let slug = overrides.slug || generateJobSlug(company.companyName, jobData.title);
-    // Defensive: handle (extremely unlikely) slug collision from nanoid
-    let attempts = 0;
-    while (await JobV2.findOne({ slug }).select("_id").lean()) {
-        attempts++;
-        if (attempts > 5) throw new Error("Could not generate unique job slug after 5 attempts");
-        slug = generateJobSlug(company.companyName, jobData.title);
-    }
+    const slug = overrides.slug || (await resolveUniqueJobSlug(company.companyName, jobData.title));
 
     const payload = {
         ...jobData,

@@ -14,6 +14,13 @@ function toSlug(input) {
     return slugify(String(input), SLUGIFY_OPTS);
 }
 
+/**
+ * Build the clean, deterministic base slug for a job: "company-title".
+ *
+ * No random/date suffix is added here — the same company + title always yields
+ * the same slug, so a reposted role reuses the same URL. Collision handling
+ * (date / random tie-breakers) lives in the DB-aware resolver, not here.
+ */
 function generateJobSlug(companyName, title) {
     if (!companyName || typeof companyName !== "string" || !companyName.trim()) {
         throw new Error("generateJobSlug: companyName is required and must be a non-empty string");
@@ -37,7 +44,23 @@ function generateJobSlug(companyName, title) {
         base = base.slice(0, BASE_MAX_LENGTH).replace(/-+$/, "");
     }
 
-    return `${base}-${nanoid()}`;
+    return base;
+}
+
+/**
+ * UTC date suffix in "YYYY-MM-DD" form, used as the first collision tie-breaker
+ * for job slugs (e.g. "google-software-engineer-2026-06-16").
+ */
+function dateSlugSuffix(date = new Date()) {
+    return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Short random suffix — the last-resort tie-breaker when even the dated slug
+ * is already taken.
+ */
+function randomSlugSuffix() {
+    return nanoid();
 }
 
 function generateCompanySlug(companyName) {
@@ -72,4 +95,6 @@ module.exports = {
     generateJobSlug,
     generateCompanySlug,
     validateSlug,
+    dateSlugSuffix,
+    randomSlugSuffix,
 };

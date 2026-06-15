@@ -1,8 +1,7 @@
 const JobV2 = require("../jobsV2/jobsV2.model");
 const { apiErrorHandler } = require("../../utils/controllerHelper");
-const { generateJobSlug, validateSlug } = require("../../utils/slugify");
-
-const MAX_SLUG_ATTEMPTS = 5;
+const { validateSlug } = require("../../utils/slugify");
+const { resolveUniqueJobSlug } = require("./resolveJobSlug");
 
 /**
  * POST /api/admin/jobs/v2 — Create a JobV2
@@ -23,19 +22,7 @@ exports.createJobV2 = async (req, res) => {
                 return res.status(409).json({ error: "A job with this slug already exists" });
             }
         } else {
-            let attempts = 0;
-            while (attempts < MAX_SLUG_ATTEMPTS) {
-                const candidate = generateJobSlug(data.companyName, data.title);
-                const collision = await JobV2.findOne({ slug: candidate }).select("_id").lean();
-                if (!collision) {
-                    slug = candidate;
-                    break;
-                }
-                attempts += 1;
-            }
-            if (!slug) {
-                return res.status(500).json({ error: "Could not generate unique slug" });
-            }
+            slug = await resolveUniqueJobSlug(data.companyName, data.title);
         }
 
         const job = await JobV2.create({ ...data, slug });

@@ -57,7 +57,7 @@ careersattech-Backend/
 │   └── jobClickV2.schema.js               # v2 click events with TTL (180d)
 ├── validators/                            # Zod schemas: jobV2.js, companyV2.js
 ├── Helpers/controllerHelper.js            # apiErrorHandler, filterData, jobDetailsHandler, escapeRegex
-├── utils/slugify.js                       # generateJobSlug, generateCompanySlug (nanoid suffix)
+├── utils/slugify.js                       # generateJobSlug (clean base), generateCompanySlug; date/random collision suffixes
 ├── Data/companycareerpage.json            # Static list of 100+ company career page URLs
 ├── blog/                                  # Blog module (schema, routes, controllers, scheduler, services)
 │   ├── blog.schema.js                     # status: draft|scheduled|published|archived
