@@ -30,8 +30,7 @@ OUTPUT JSON SHAPE — return exactly this top-level structure:
   "employmentType": "array of strings (required) — choose one or more from: ['FULL_TIME','PART_TIME','CONTRACTOR','INTERN','TEMPORARY']. Internships → ['INTERN']. Full-time roles → ['FULL_TIME']. Contractual → ['CONTRACTOR'].",
   "batch": "array of integers (required) — eligible graduation years between 2020 and 2030. For 'freshers' or '0-1 years' use the current year and the previous 2 years. Example: [2024, 2025, 2026]. Must be unique.",
   "jobDescription": {
-    "html": "string (required when displayMode is 'internal') — full SEO-friendly HTML job description. Include sections wrapped in <h3>About the role</h3><p>...</p>, <h3>Responsibilities</h3><ul><li>...</li></ul>, <h3>Eligibility</h3><ul><li>...</li></ul>, <h3>Skills</h3><ul><li>...</li></ul>, <h3>Benefits</h3><ul><li>...</li></ul>. Max 5 <li> per list. Combine shorter related points. Total length 400-800 words. Fresher-friendly tone.",
-    "plain": "string (optional) — plain-text version. If omitted the server derives it from html."
+    "html": "string (required when displayMode is 'internal') — full SEO-friendly HTML job description. Include sections wrapped in <h3>About the role</h3><p>...</p> - About the role should be of 30 - 80 words with all the basic detail, <h3>Responsibilities</h3><ul><li>...</li></ul>, <h3>Eligibility</h3><ul><li>...</li></ul>, <h3>Skills</h3><ul><li>...</li></ul>, <h3>Benefits</h3><ul><li>...</li></ul>. Max 5 per section. Combine shorter related points. Total length 400-800 words. Fresher-friendly tone. And if possible try to populate all the section from the given data",
   },
   "category": "string — one of: ['engineering','design','product','data','devops','qa','management','other']. Infer from title and skills.",
   "workMode": "string — one of: ['onsite','hybrid','remote']. Default 'onsite' if unclear.",
