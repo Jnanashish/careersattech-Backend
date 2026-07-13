@@ -4,7 +4,7 @@ const JobV2 = require("../modules/jobsV2/jobsV2.model");
 const { verifyJob } = require("../services/jobVerifier");
 const emailReporter = require("../services/jobVerifier/emailReporter");
 
-const DEFAULT_CRON = "0 3 */3 * *"; // every 3 days at 3 AM
+const DEFAULT_CRON = "0 21 * * 5"; // every Friday at 21:00 (9 PM)
 const DEFAULT_CONCURRENCY = 5;
 const PER_DOMAIN_GAP_MS = 2_000;
 
@@ -229,6 +229,55 @@ async function runVerification(opts = {}) {
     return summary;
 }
 
+/**
+ * Archive time-expired jobs.
+ *
+ * "Expired" here matches exactly what the public API reports as `isExpired`:
+ * a published job whose `validThrough` date has passed. Such jobs are already
+ * hidden from public listings (the list/detail read filters on validThrough)
+ * but still sit at status:"published" in the DB. This sweep flips them to
+ * status:"archived" so their stored state matches what the API already
+ * considers expired.
+ *
+ * Archive only — never deletes (no deletedAt), and only touches genuinely
+ * expired jobs. Distinct from the link-verifier, which archives *dead-link*
+ * jobs; this one is a pure date-based DB sweep with no outbound requests.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.dryRun]
+ * @returns {Promise<{ archived: number, matched: number, dryRun: boolean, checkedAt: Date }>}
+ */
+async function archiveExpiredJobs(opts = {}) {
+    const dryRun = opts.dryRun ?? isDryRun();
+    const now = new Date();
+
+    const filter = {
+        status: "published",
+        deletedAt: null,
+        validThrough: { $ne: null, $lte: now },
+    };
+
+    if (dryRun) {
+        const matched = await JobV2.countDocuments(filter);
+        logger.info(`[expire] dry-run: would archive ${matched} expired job(s)`);
+        return { archived: 0, matched, dryRun: true, checkedAt: now };
+    }
+
+    const res = await JobV2.updateMany(filter, {
+        $set: {
+            status: "archived",
+            archivedAt: now,
+            archivedReason: "auto-expired-validThrough",
+        },
+    });
+
+    const archived = res.modifiedCount || 0;
+    logger.info(
+        `[expire] archived ${archived} expired job(s) (matched=${res.matchedCount || 0}, validThrough <= now)`
+    );
+    return { archived, matched: res.matchedCount || 0, dryRun: false, checkedAt: now };
+}
+
 function init() {
     if (process.env.VERIFY_JOBS_ENABLED !== "true") {
         logger.info("[verify] VERIFY_JOBS_ENABLED is not 'true' — cron NOT scheduled");
@@ -245,6 +294,16 @@ function init() {
     cron.schedule(
         schedule,
         async () => {
+            // Weekly maintenance (Fri 9 PM by default): archive time-expired
+            // jobs first so they drop out of the published set, then run the
+            // link verifier over what remains (skips re-checking expired jobs).
+            try {
+                const expiry = await archiveExpiredJobs();
+                logger.info(`[verify] expiry sweep archived ${expiry.archived} job(s)`);
+            } catch (err) {
+                logger.error(`[expire] cron sweep failed: ${err.stack || err.message}`);
+            }
+
             try {
                 await runVerification({ trigger: "cron" });
             } catch (err) {
@@ -258,6 +317,7 @@ function init() {
 module.exports = {
     init,
     runVerification,
+    archiveExpiredJobs,
     _internals: {
         buildJobUpdate,
         hostnameOf,
