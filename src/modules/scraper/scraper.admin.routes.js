@@ -3,13 +3,13 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const StagingJob = require("./models/stagingJob.model");
 const ScrapeLog = require("./models/scrapeLog.model");
-const JobV2 = require("../jobsV2/jobsV2.model");
-const CompanyV2 = require("../companiesV2/companiesV2.model");
 const { runPipeline } = require("../../jobs/scraper.scheduler");
 const { scrapeOne, getAdapterByName, listAllAdapters } = require("./scraper.fetch");
-const { findCompanyByName } = require("./ingester");
-const { generateCompanySlug } = require("../../utils/slugify");
-const { resolveUniqueJobSlug } = require("../jobsV2/resolveJobSlug");
+const {
+    approveStagingJob,
+    isDuplicateKeyError,
+    duplicateKeyMessage,
+} = require("./publisher");
 const { requestStop, clearStop, getAll: getStopFlags } = require("./stopFlags");
 const requireAdminSecret = require("../../middleware/adminSecret");
 const asyncHandler = require("../../middleware/asyncHandler");
@@ -39,160 +39,10 @@ function pickAllowedOverrides(input) {
 
 router.use("/admin/scrape", requireAdminSecret);
 
-/**
- * Resolve (or create) the CompanyV2 for a staging row.
- * Order: pre-linked staging.matchedCompany → existing CompanyV2 by name → create from companyData.
- */
-async function ensureCompanyForStaging(staging) {
-    if (staging.matchedCompany) {
-        const linked = await CompanyV2.findById(staging.matchedCompany);
-        if (linked && !linked.deletedAt) return linked;
-    }
-
-    const companyData = staging.companyData?.toObject ? staging.companyData.toObject() : staging.companyData || {};
-    const companyName = companyData.companyName || staging.jobData?.companyName;
-    if (!companyName) {
-        throw new Error("Cannot resolve company: companyName missing from staging");
-    }
-
-    const existing = await findCompanyByName(companyName);
-    if (existing) return CompanyV2.findById(existing._id);
-
-    // Create a new CompanyV2 from the AI-enriched companyData
-    let slug = generateCompanySlug(companyName);
-    // Resolve slug collisions deterministically (different company names that slugify to the same value)
-    let suffix = 1;
-    while (await CompanyV2.findOne({ slug }).select("_id").lean()) {
-        suffix++;
-        slug = `${generateCompanySlug(companyName)}-${suffix}`;
-        if (suffix > 50) {
-            throw new Error(`Could not generate unique slug for company "${companyName}"`);
-        }
-    }
-
-    const createPayload = {
-        ...companyData,
-        companyName,
-        slug,
-        source: "scraped",
-        status: "active",
-    };
-    // Never persist v1Id: null — a stale plain-unique index on v1Id will
-    // collide on the second null-valued doc. Scraped companies have no
-    // legacy v1 id, so omit the field entirely.
-    if (createPayload.v1Id == null) delete createPayload.v1Id;
-
-    const created = await CompanyV2.create(createPayload);
-
-    return created;
-}
-
-/**
- * E11000 → friendly 409 mapper for the approve flow. The most painful
- * historic failure is a duplicate `v1Id: null` from a stale plain-unique
- * index on companies_v2.v1Id (run migration/scripts/fix-companies-v1Id-index.js
- * to convert it to partial-unique).
- */
-function isDuplicateKeyError(err) {
-    return err && (err.code === 11000 || err.codeName === "DuplicateKey");
-}
-
-function duplicateKeyMessage(err) {
-    const keyPattern = err.keyPattern || {};
-    const keyValue = err.keyValue || {};
-    if (keyPattern.v1Id !== undefined || keyValue.v1Id !== undefined) {
-        return "Company conflict — duplicate v1Id";
-    }
-    const field = Object.keys(keyPattern)[0] || Object.keys(keyValue)[0];
-    return field ? `Duplicate key on ${field}` : "Duplicate key conflict";
-}
-
-/**
- * Build a JobV2 payload from a staging row + resolved company.
- *
- * Approval semantics:
- * - status defaults to "published" (the whole point of approval is to go live).
- *   Reviewer can explicitly override with overrides.status to keep "draft" etc.
- * - datePosted is forced to "now" if it's missing or stale (older than today UTC),
- *   so the public-facing date reflects when the job actually went live.
- */
-async function buildJobV2Payload(staging, company, overrides = {}) {
-    const jobData = staging.jobData?.toObject ? staging.jobData.toObject() : { ...staging.jobData };
-
-    const slug = overrides.slug || (await resolveUniqueJobSlug(company.companyName, jobData.title));
-
-    const payload = {
-        ...jobData,
-        ...overrides,
-        company: company._id,
-        companyName: company.companyName,
-        slug,
-        source: "scraped",
-        status: Object.prototype.hasOwnProperty.call(overrides, "status")
-            ? overrides.status
-            : "published",
-    };
-
-    const now = new Date();
-    const todayUtcStart = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-    );
-    if (!payload.datePosted || new Date(payload.datePosted) < todayUtcStart) {
-        const scrapedAtMs = staging.scrapedAt
-            ? new Date(staging.scrapedAt).getTime()
-            : now.getTime();
-        const nowMs = now.getTime();
-        const lo = Math.min(scrapedAtMs, nowMs);
-        const hi = nowMs;
-        const randMs = lo + Math.floor(Math.random() * (hi - lo + 1));
-        payload.datePosted = new Date(randMs);
-    }
-
-    return payload;
-}
-
-/**
- * Same publish-readiness gate the manual publish flow relies on (Mongoose
- * `required` + the displayMode pre-validate hook). We run it pre-create so
- * the API can return field-level errors instead of a generic 500, and so
- * we never silently downgrade to draft on missing fields.
- */
-function validatePublishReadiness(payload) {
-    const errors = [];
-    const requireString = (path, value) => {
-        if (typeof value !== "string" || value.trim().length === 0) {
-            errors.push({ path, message: `${path} is required to publish` });
-        }
-    };
-    const requireNonEmptyArray = (path, value) => {
-        if (!Array.isArray(value) || value.length === 0) {
-            errors.push({ path, message: `${path} is required to publish` });
-        }
-    };
-
-    requireString("title", payload.title);
-    if (!payload.company) errors.push({ path: "company", message: "company is required to publish" });
-    requireString("companyName", payload.companyName);
-    requireString("applyLink", payload.applyLink);
-    requireNonEmptyArray("employmentType", payload.employmentType);
-    requireNonEmptyArray("batch", payload.batch);
-    if (!payload.datePosted) {
-        errors.push({ path: "datePosted", message: "datePosted is required to publish" });
-    }
-    requireString("slug", payload.slug);
-
-    if (payload.displayMode === "internal") {
-        const html = payload.jobDescription && payload.jobDescription.html;
-        if (typeof html !== "string" || html.trim().length === 0) {
-            errors.push({
-                path: "jobDescription.html",
-                message: "jobDescription.html is required when displayMode is 'internal'",
-            });
-        }
-    }
-
-    return errors;
-}
+// The publish routine (approveStagingJob) and its E11000 helpers live in
+// ./publisher so the scraper scheduler can reuse them for the auto-publish
+// bypass without importing this Express router (which would be circular —
+// the router already imports runPipeline from the scheduler).
 
 /**
  * Best-effort admin identity for audit stamping. The scraper admin routes
@@ -209,68 +59,23 @@ function resolveApprovedBy(req, bodyApprovedBy) {
     );
 }
 
-/**
- * Convert a Mongoose ValidationError to the same {path, message}[] shape we
- * use for our pre-create publish-readiness gate.
- */
-function mongooseValidationToFieldErrors(err) {
-    return Object.values(err.errors || {}).map((e) => ({
-        path: e.path,
-        message: e.message,
-    }));
-}
-
-/**
- * Core approve routine: resolve company, build payload, gate on publish
- * readiness, create job, stamp audit fields on staging.
- *
- * Returns { job } on success, throws on hard errors, or returns
- * { fieldErrors } when the readiness gate or Mongoose validation rejects.
- */
-async function approveStagingJob(staging, overrides, approvedBy) {
-    const company = await ensureCompanyForStaging(staging);
-    const payload = await buildJobV2Payload(staging, company, overrides);
-
-    if (payload.status === "published") {
-        const fieldErrors = validatePublishReadiness(payload);
-        if (fieldErrors.length > 0) return { fieldErrors };
-    }
-
-    payload.approvedBy = approvedBy;
-    payload.approvedFromStagingId = staging._id;
-    if (payload.status === "published") {
-        payload.publishedAt = new Date();
-    }
-
-    let newJob;
-    try {
-        newJob = await JobV2.create(payload);
-    } catch (err) {
-        if (err.name === "ValidationError") {
-            return { fieldErrors: mongooseValidationToFieldErrors(err) };
-        }
-        throw err;
-    }
-
-    staging.status = "approved";
-    staging.approvedAt = new Date();
-    staging.approvedJob = newJob._id;
-    staging.matchedCompany = company._id;
-    if (!staging.jobData.company) staging.jobData.company = company._id;
-    await staging.save();
-
-    return { job: newJob };
-}
-
 // POST /admin/scrape/run — trigger manual scrape.
 // Body: { adapter?: string } — when provided, runs only that adapter
 // (allowing disabled-by-default adapters like "peerlist" to be triggered
 // from the UI). When omitted, runs the default enabled registry.
+// Body: { autoPublish?: boolean } — per-run override of the
+// SCRAPER_AUTO_PUBLISH env default. true → publish scraped jobs straight to
+// JobV2 (skip the staging review queue); false → force review even if the env
+// default is on. Omitted → use the env default.
 router.post("/admin/scrape/run", async (req, res, next) => {
     try {
         const adapterName = req.body && typeof req.body.adapter === "string"
             ? req.body.adapter.trim()
             : "";
+
+        const autoPublish = req.body && typeof req.body.autoPublish === "boolean"
+            ? req.body.autoPublish
+            : undefined;
 
         let adapterList;
         if (adapterName) {
@@ -288,8 +93,9 @@ router.post("/admin/scrape/run", async (req, res, next) => {
             message: "Scrape run started",
             status: "running",
             adapter: adapterName || "all",
+            autoPublish: autoPublish === undefined ? "env-default" : autoPublish,
         });
-        runPipeline("manual", adapterList).catch((err) => {
+        runPipeline("manual", adapterList, { autoPublish }).catch((err) => {
             logger.error(`[Admin] Manual scrape run failed: ${err.message}`);
         });
     } catch (err) {

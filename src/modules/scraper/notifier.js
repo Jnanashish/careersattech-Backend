@@ -36,16 +36,18 @@ async function sendScrapeReport(scrapeLog) {
     const adapterLines = scrapeLog.adapters
         .map((a) => {
             const icon = a.status === "success" ? "✅" : a.status === "partial" ? "⚠️" : "❌";
-            return `${icon} <b>${a.name}</b>: ${a.jobsIngested || 0} new, ${a.jobsSkipped || 0} skipped`;
+            const published = a.jobsPublished ? `, ${a.jobsPublished} published` : "";
+            return `${icon} <b>${a.name}</b>: ${a.jobsIngested || 0} new${published}, ${a.jobsSkipped || 0} skipped`;
         })
         .join("\n");
 
+    const publishedTotal = s.totalPublished ? ` | ${s.totalPublished} published` : "";
     const text =
         `<b>🔍 Scrape Run Complete</b>\n` +
         `Trigger: ${scrapeLog.trigger}\n` +
         `AI: ${scrapeLog.aiProvider}\n\n` +
         `${adapterLines}\n\n` +
-        `<b>Total:</b> ${s.totalNew} new | ${s.totalSkipped} skipped | ${s.totalErrors} errors`;
+        `<b>Total:</b> ${s.totalNew} new${publishedTotal} | ${s.totalSkipped} skipped | ${s.totalErrors} errors`;
 
     await send(text);
 }

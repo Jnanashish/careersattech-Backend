@@ -3,21 +3,33 @@ const { randomUUID } = require("crypto");
 const { scrapeAll, getAdapterByName } = require("../modules/scraper/scraper.fetch");
 const { transformBatch } = require("../modules/scraper/transformer");
 const { ingest, filterKnownJobs } = require("../modules/scraper/ingester");
+const { autoPublishStaged } = require("../modules/scraper/publisher");
 const { getProvider } = require("../modules/scraper/providers");
 const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
 const notifier = require("../modules/scraper/notifier");
 const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
 
-async function runPipeline(trigger = "manual", adapterList = undefined) {
+async function runPipeline(trigger = "manual", adapterList = undefined, opts = {}) {
     const runId = randomUUID();
     const startedAt = new Date();
     const aiProvider = getProvider().name;
 
-    console.log(`[Scheduler] Starting scrape run ${runId} (trigger: ${trigger}, ai: ${aiProvider})`);
+    // Auto-publish bypass: when on, scraped jobs are published straight to
+    // JobV2 (skipping the staging review queue). Per-run opts.autoPublish wins;
+    // otherwise fall back to the SCRAPER_AUTO_PUBLISH env default (off).
+    const autoPublish = typeof opts.autoPublish === "boolean"
+        ? opts.autoPublish
+        : process.env.SCRAPER_AUTO_PUBLISH === "true";
+
+    console.log(
+        `[Scheduler] Starting scrape run ${runId} ` +
+        `(trigger: ${trigger}, ai: ${aiProvider}, autoPublish: ${autoPublish})`
+    );
 
     const adapterResults = [];
     let totalNew = 0;
     let totalSkipped = 0;
+    let totalPublished = 0;
     let totalErrors = 0;
     const adaptersSucceeded = [];
     const adaptersFailed = [];
@@ -50,6 +62,7 @@ async function runPipeline(trigger = "manual", adapterList = undefined) {
                 jobsFetched: result.stats.jobsFetched,
                 jobsTransformed: 0,
                 jobsIngested: 0,
+                jobsPublished: 0,
                 jobsSkipped: 0,
                 errors: [...result.stats.errors],
                 durationMs: result.stats.durationMs,
@@ -96,6 +109,23 @@ async function runPipeline(trigger = "manual", adapterList = undefined) {
 
                 totalNew += ingestResult.new;
                 totalSkipped += ingestResult.skipped;
+
+                // Auto-publish bypass: push freshly-staged jobs straight to
+                // JobV2 instead of waiting for manual approval. Jobs that fail
+                // the publish-readiness gate stay `pending` in staging, so
+                // they still surface in the manual review queue.
+                if (autoPublish && ingestResult.created.length > 0) {
+                    const pub = await autoPublishStaged(ingestResult.created, {
+                        approvedBy: `auto-scraper:${result.adapter}`,
+                    });
+                    adapterLog.jobsPublished = pub.published;
+                    totalPublished += pub.published;
+                    console.log(
+                        `[Scheduler] ${result.adapter}: auto-published ` +
+                        `${pub.published}/${ingestResult.created.length} ` +
+                        `(${pub.failed} left in staging)`
+                    );
+                }
             }
 
             totalErrors += adapterLog.errors.length;
@@ -129,6 +159,7 @@ async function runPipeline(trigger = "manual", adapterList = undefined) {
         adapters: adapterResults,
         summary: {
             totalNew,
+            totalPublished,
             totalSkipped,
             totalErrors,
             adaptersSucceeded,
@@ -144,7 +175,8 @@ async function runPipeline(trigger = "manual", adapterList = undefined) {
     }
 
     console.log(
-        `[Scheduler] Run ${runId} complete: ${totalNew} new, ${totalSkipped} skipped, ${totalErrors} errors`
+        `[Scheduler] Run ${runId} complete: ${totalNew} new, ` +
+        `${totalPublished} published, ${totalSkipped} skipped, ${totalErrors} errors`
     );
 
     // Check consecutive failures

@@ -15,6 +15,7 @@ const scrapeLogSchema = new mongoose.Schema(
                 jobsFetched: Number,
                 jobsTransformed: Number,
                 jobsIngested: Number,
+                jobsPublished: Number,
                 jobsSkipped: Number,
                 errors: [
                     {
@@ -28,6 +29,7 @@ const scrapeLogSchema = new mongoose.Schema(
         ],
         summary: {
             totalNew: Number,
+            totalPublished: Number,
             totalSkipped: Number,
             totalErrors: Number,
             adaptersSucceeded: [String],

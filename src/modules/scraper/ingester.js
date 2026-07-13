@@ -23,6 +23,9 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
     let newCount = 0;
     let skippedCount = 0;
     const errors = [];
+    // Freshly created StagingJob docs, returned so the pipeline can optionally
+    // auto-publish them (SCRAPER_AUTO_PUBLISH bypass) without a second query.
+    const created = [];
 
     for (const job of transformedJobs) {
         const jobData = job.jobData || {};
@@ -100,7 +103,7 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
                 jobData.companyName = existingCompany.companyName; // canonical casing
             }
 
-            await StagingJob.create({
+            const stagedDoc = await StagingJob.create({
                 status: "pending",
                 source: adapterName,
                 sourceUrl: job.sourceUrl,
@@ -111,6 +114,7 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
                 matchedCompany: matchedCompanyId,
                 aiProvider,
             });
+            created.push(stagedDoc);
 
             console.log(
                 `[Ingester] Staged: ${jobData.title} @ ${jobData.companyName}` +
@@ -133,7 +137,7 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
     }
 
     console.log(`[Ingester] Done: ${newCount} new, ${skippedCount} skipped, ${errors.length} errors`);
-    return { new: newCount, skipped: skippedCount, errors };
+    return { new: newCount, skipped: skippedCount, errors, created };
 }
 
 async function filterKnownUrls(urls) {
