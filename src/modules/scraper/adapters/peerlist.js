@@ -2,13 +2,16 @@ const cheerio = require("cheerio");
 const { filterKnownUrls } = require("../ingester");
 const { isStopRequested } = require("../stopFlags");
 const { applyAll, DROP } = require("../peerlist/filters");
-const { scrubRecord, containsSourceHost } = require("../peerlist/scrub");
+const { scrubRecord, scrubText, containsSourceHost } = require("../peerlist/scrub");
 const { SOURCE_HOSTS } = require("../peerlist/constants");
+const { fetchApplyPageContent } = require("../applyPageContent");
 const logger = require("../../../utils/logger");
 
 const BASE_URL = "https://peerlist.io/jobs";
 const DELAY_MS = 2500;
+const APPLY_FETCH_DELAY_MS = 1000;
 const MAX_PAGES = 25;
+const MAX_PAGE_CONTENT = 16000;
 
 function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
@@ -144,7 +147,7 @@ function parseJobCards(html) {
     return records;
 }
 
-function formatPageContent(record) {
+function formatPageContent(record, applyPage) {
     const parts = [
         `Job Title: ${record.title}`,
         `Company: ${record.companyName}`,
@@ -159,15 +162,22 @@ function formatPageContent(record) {
     if (record.skills && record.skills.length > 0) {
         parts.push(`Skills: ${record.skills.join(", ")}`);
     }
-    if (record.descriptionSnippet) {
-        parts.push("", "Job Description:", record.descriptionSnippet);
-    }
     parts.push("", `Apply URL: ${record.applyUrl}`);
     if (record.postedDate) {
         parts.push(`Posted: ${record.postedDate}`);
     }
 
-    return parts.join("\n").slice(0, 8000);
+    // Card snippets run a sentence or two — enough for the transformer to
+    // title a job, nowhere near enough to write a JD from. The company's own
+    // posting is the real source, so it goes last and the snippet is only a
+    // fallback for when that page is unreachable.
+    if (applyPage && applyPage.text) {
+        parts.push("", `OFFICIAL JOB POSTING (fetched from ${record.applyUrl}):`, applyPage.text);
+    } else if (record.descriptionSnippet) {
+        parts.push("", "Job Description:", record.descriptionSnippet);
+    }
+
+    return parts.join("\n").slice(0, MAX_PAGE_CONTENT);
 }
 
 module.exports = {
@@ -190,10 +200,16 @@ module.exports = {
         const fetchPage = options.fetchPageImpl || require("../scraper.fetch").fetchPage;
         const limit = options.limit || this.selectors.jobLinks.limit;
         const maxPages = options.maxPages || MAX_PAGES;
+        // No delay when a fetcher is injected — that means no real network.
+        const applyDelayMs = options.applyDelayMs != null
+            ? options.applyDelayMs
+            : (options.fetchPageImpl ? 0 : APPLY_FETCH_DELAY_MS);
 
         const stats = {
             jobLinksFound: 0,
             jobsFetched: 0,
+            applyPagesFetched: 0,
+            applyPagesMissed: 0,
             errors: [],
             dropCounts: {
                 [DROP.APPLY]: 0,
@@ -262,6 +278,23 @@ module.exports = {
                     continue;
                 }
 
+                // Peerlist cards carry no full description, so pull the real
+                // posting from the company's own apply page. Scrub it like every
+                // other field — the source's identity must not survive into
+                // what we publish.
+                const fetched = await fetchApplyPageContent(rec.applyUrl, { fetchPageImpl: fetchPage });
+                let applyPage = null;
+                if (fetched) {
+                    const text = scrubText(fetched.text);
+                    if (containsSourceHost(text)) {
+                        logger.info(`[peerlist] apply page mentions the source host, dropping its text: ${rec.applyUrl}`);
+                    } else {
+                        applyPage = { ...fetched, text };
+                    }
+                }
+                if (applyPage) stats.applyPagesFetched++;
+                else stats.applyPagesMissed++;
+
                 jobs.push({
                     source: this.name,
                     sourceUrl: rec.applyUrl,
@@ -271,10 +304,11 @@ module.exports = {
                         company: rec.companyName,
                         postedDate: rec.postedDate || null,
                     },
-                    pageContent: formatPageContent(rec),
+                    pageContent: formatPageContent(rec, applyPage),
                     companyPageContent: null,
                 });
                 stats.jobsFetched++;
+                if (applyDelayMs) await sleep(applyDelayMs);
             }
 
             if (everySeen) {
@@ -286,6 +320,7 @@ module.exports = {
 
         logger.info(
             `[peerlist] scrape done: links=${stats.jobLinksFound} fetched=${stats.jobsFetched} ` +
+            `applyPages=${stats.applyPagesFetched}/${stats.applyPagesFetched + stats.applyPagesMissed} ` +
             `drops=${JSON.stringify(stats.dropCounts)}`
         );
 

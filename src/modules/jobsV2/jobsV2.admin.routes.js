@@ -4,20 +4,23 @@ const router = express.Router();
 
 const requireAuth = require("../../middleware/auth");
 const validateObjectId = require("../../middleware/validateObjectId");
+const requirePermanentFlag = require("../../middleware/requirePermanentFlag");
 
 const {
     createJobV2,
     listJobsV2,
     getJobV2,
     updateJobV2,
-    deleteJobV2,
+    archiveJobV2,
+    restoreJobV2,
+    hardDeleteJobV2,
 } = require("./jobsV2.controller");
 
 const {
     triggerVerifyNow,
     getVerifyStatus,
     listFlaggedJobs,
-    purgeFlaggedJobs,
+    archiveFlaggedJobs,
 } = require("./jobsV2.cleanup.controller");
 
 const {
@@ -26,7 +29,7 @@ const {
     listJobV2QuerySchema,
     verifyNowSchema,
     flaggedQuerySchema,
-    purgeFlaggedSchema,
+    archiveFlaggedSchema,
     validate,
     validateQuery,
 } = require("./jobsV2.validators");
@@ -52,11 +55,21 @@ router.get("/admin/jobs/v2", requireAuth, validateQuery(listJobV2QuerySchema), l
 router.post("/admin/jobs/v2/verify-now", requireAuth, validate(verifyNowSchema), triggerVerifyNow);
 router.get("/admin/jobs/v2/verify-now/status", requireAuth, getVerifyStatus);
 router.get("/admin/jobs/v2/flagged", requireAuth, validateQuery(flaggedQuerySchema), listFlaggedJobs);
-router.post("/admin/jobs/v2/flagged/purge", requireAuth, validate(purgeFlaggedSchema), purgeFlaggedJobs);
+router.post("/admin/jobs/v2/flagged/archive", requireAuth, validate(archiveFlaggedSchema), archiveFlaggedJobs);
 
 router.get("/admin/jobs/v2/:id", requireAuth, validateObjectId, getJobV2);
 router.patch("/admin/jobs/v2/:id", requireAuth, validateObjectId, validate(updateJobV2Schema), updateJobV2);
-router.delete("/admin/jobs/v2/:id", requireAuth, validateObjectId, deleteJobV2);
+// POST /:id/archive = reversible soft delete, undone by /:id/restore.
+// DELETE /:id = permanent removal, gated behind an explicit ?permanent=true.
+router.post("/admin/jobs/v2/:id/archive", requireAuth, validateObjectId, archiveJobV2);
+router.post("/admin/jobs/v2/:id/restore", requireAuth, validateObjectId, restoreJobV2);
+router.delete(
+    "/admin/jobs/v2/:id",
+    requireAuth,
+    validateObjectId,
+    requirePermanentFlag,
+    hardDeleteJobV2
+);
 
 router.post(
     "/admin/jobs/scrape-and-post",

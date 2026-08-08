@@ -17,8 +17,8 @@ const FLAGGED_PROJECTION =
 
 /**
  * Filter for jobs the verifier has flagged for review and that are not yet
- * deleted. This is the exact set that `purge { all: true }` removes, so the
- * list endpoint and the bulk-delete always agree on "what is flagged".
+ * archived. This is the exact set that `archive { all: true }` covers, so the
+ * list endpoint and the bulk-archive always agree on "what is flagged".
  *
  * @param {string} [result] optional narrowing to a single flagged result
  */
@@ -121,16 +121,17 @@ exports.listFlaggedJobs = async (req, res) => {
 };
 
 /**
- * POST /api/admin/jobs/v2/flagged/purge
+ * POST /api/admin/jobs/v2/flagged/archive
  *
- * Soft-delete jobs in bulk. Body must carry explicit intent:
- *   { ids: [..] }  → delete exactly those (skips any already deleted)
- *   { all: true }  → delete every currently-flagged job
+ * Archive jobs in bulk. Body must carry explicit intent:
+ *   { ids: [..] }  → archive exactly those (skips any already archived)
+ *   { all: true }  → archive every currently-flagged job
  *
- * Soft delete = set deletedAt + status "archived" (reversible, and drops the
- * job out of every public and admin listing). Matches the single-job DELETE.
+ * Archive = set deletedAt + status "archived" (reversible, and drops the job
+ * out of every public and admin listing). Matches the single-job
+ * POST /:id/archive. Nothing here removes documents from Mongo.
  */
-exports.purgeFlaggedJobs = async (req, res) => {
+exports.archiveFlaggedJobs = async (req, res) => {
     try {
         const { ids, all } = req.validated || {};
 
@@ -143,7 +144,7 @@ exports.purgeFlaggedJobs = async (req, res) => {
         } else if (all) {
             filter = buildFlaggedFilter();
         } else {
-            // Validator should have caught this; guard anyway so a bulk delete
+            // Validator should have caught this; guard anyway so a bulk archive
             // never fires on an empty/unintended body.
             return res.status(400).json({
                 error: "Provide a non-empty `ids` array or `all: true`",
@@ -151,12 +152,12 @@ exports.purgeFlaggedJobs = async (req, res) => {
         }
 
         // Resolve the exact ids first so the response is an audit of what was
-        // removed (updateMany alone can't tell us which docs it touched).
+        // archived (updateMany alone can't tell us which docs it touched).
         const matched = await JobV2.find(filter).select("_id").lean();
         const matchedIds = matched.map((d) => d._id);
 
         if (matchedIds.length === 0) {
-            return res.status(200).json({ deleted: 0, ids: [] });
+            return res.status(200).json({ archived: 0, ids: [] });
         }
 
         const result = await JobV2.updateMany(
@@ -164,10 +165,10 @@ exports.purgeFlaggedJobs = async (req, res) => {
             { $set: { deletedAt: new Date(), status: "archived" } }
         );
 
-        logger.info(`[verify:api] purge soft-deleted ${result.modifiedCount} job(s)`);
+        logger.info(`[verify:api] bulk-archived ${result.modifiedCount} job(s)`);
 
         return res.status(200).json({
-            deleted: result.modifiedCount,
+            archived: result.modifiedCount,
             ids: matchedIds,
         });
     } catch (err) {

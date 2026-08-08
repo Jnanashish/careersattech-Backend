@@ -8,6 +8,20 @@ IMPORTANT: Return ONLY valid JSON. No markdown, no code blocks, no explanations.
 NOTE: This company already exists in our database — its canonical name is provided in the input as `existingCompany.companyName`. Do NOT generate, infer, or return any company details. Return ONLY the "job" object below.
 
 <</EXISTING_COMPANY>>
+────────────────────────────────────────────────
+READING THE INPUT:
+- `pageContent` starts with aggregator metadata (title, company, location, tech stack).
+- When it also contains a block headed "OFFICIAL JOB POSTING", that block is the
+  company's own posting fetched from the apply URL. It is the AUTHORITATIVE source
+  for jobDescription, responsibilities, eligibility, skills, salary and dates —
+  prefer it over the metadata whenever the two disagree.
+- The official posting is machine-extracted, so it may still carry site navigation,
+  cookie notices, language switchers, "apply now" chrome or unrelated job links.
+  Ignore that noise; use only the parts describing this role and this company.
+- When no "OFFICIAL JOB POSTING" block is present, you only have the metadata.
+  Write the shortest honest description that block supports and do NOT invent
+  responsibilities, benefits or eligibility to fill the sections out.
+
 OUTPUT JSON SHAPE — return exactly this top-level structure:
 <<NEW_COMPANY>>
 {
@@ -30,7 +44,7 @@ OUTPUT JSON SHAPE — return exactly this top-level structure:
   "employmentType": "array of strings (required) — choose one or more from: ['FULL_TIME','PART_TIME','CONTRACTOR','INTERN','TEMPORARY']. Internships → ['INTERN']. Full-time roles → ['FULL_TIME']. Contractual → ['CONTRACTOR'].",
   "batch": "array of integers (required) — eligible graduation years between 2020 and 2030. For 'freshers' or '0-1 years' use the current year and the previous 2 years. Example: [2024, 2025, 2026]. Must be unique.",
   "jobDescription": {
-    "html": "string (required when displayMode is 'internal') — full SEO-friendly HTML job description. Include sections wrapped in <h3>About the role</h3><p>...</p> - About the role should be of 30 - 80 words with all the basic detail, <h3>Responsibilities</h3><ul><li>...</li></ul>, <h3>Eligibility</h3><ul><li>...</li></ul>, <h3>Skills</h3><ul><li>...</li></ul>, <h3>Benefits</h3><ul><li>...</li></ul>. Max 5 per section. Combine shorter related points. Total length 400-800 words. Fresher-friendly tone. And if possible try to populate all the section from the given data",
+    "html": "string (required when displayMode is 'internal') — full SEO-friendly HTML job description. Include sections wrapped in <h3>About the role</h3><p>...</p> - About the role should be of 30 - 80 words with all the basic detail, <h3>Responsibilities</h3><ul><li>...</li></ul>, <h3>Eligibility</h3><ul><li>...</li></ul>, <h3>Skills</h3><ul><li>...</li></ul>, <h3>Benefits</h3><ul><li>...</li></ul>. Max 6 bullets per section. Combine shorter related points. Target 400-800 words total when the source supports it — never pad with invented content, and never drop real detail from the official posting just to stay short. Fresher-friendly tone. And if possible try to populate all the section from the given data",
   },
   "category": "string — one of: ['engineering','design','product','data','devops','qa','management','other']. Infer from title and skills.",
   "workMode": "string — one of: ['onsite','hybrid','remote']. Default 'onsite' if unclear.",

@@ -128,7 +128,11 @@ careersattech-Backend/
 - `GET /jobs-by-category` — `groupBy ∈ {jobtype, workMode, location, companytype, tags}`
 
 ### Jobs v2 admin — `/api/admin/jobs/v2` (`requireAuth` + Zod validate)
-`POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id` (soft-delete)
+`POST /`, `GET /`, `GET /:id`, `PATCH /:id`,
+`POST /:id/archive` (soft-delete), `POST /:id/restore` (clears `deletedAt`,
+status → `draft`; 404 if not archived),
+`DELETE /:id?permanent=true` (permanent — also drops the job's JobClickV2
+events and frees the slug)
 
 Apply-link cleanup (manual, on-demand — same verifier the cron uses):
 - `POST /verify-now` — kick off a background scan of all published jobs;
@@ -136,13 +140,18 @@ Apply-link cleanup (manual, on-demand — same verifier the cron uses):
 - `GET /verify-now/status` — `{ running, startedAt, lastRun }`.
 - `GET /flagged` — review queue: jobs with `verification.lastCheckResult ===
   'expired'` and `deletedAt: null`. `?result=`, `?page=`, `?limit=`.
-- `POST /flagged/purge` — bulk soft-delete; body `{ ids: [...] }` or
-  `{ all: true }` (empty body → 400, no accidental wipe).
+- `POST /flagged/archive` — bulk soft-delete; body `{ ids: [...] }` or
+  `{ all: true }` (empty body → 400, no accidental wipe). Responds
+  `{ archived, ids }`. Never removes documents.
 - Routes are declared **before** `/:id` so the literal paths aren't captured
   by the ObjectId param matcher.
 
 ### Companies v2 admin — `/api/admin/companies/v2` (`requireAuth` + Zod validate)
-`POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`
+`POST /`, `GET /`, `GET /:id`, `PATCH /:id`,
+`POST /:id/archive` (soft-delete; 409 if published jobs reference it),
+`POST /:id/restore` (clears `deletedAt`, status → `inactive`; 404 if not archived),
+`DELETE /:id?permanent=true` (permanent; 409 if *any* job references it,
+archived ones included)
 
 ### Jobs v2 public — `/api/jobs` (sessionCookie middleware)
 - `GET /:slug/apply` — log `apply_click`, 302 redirect to `applyLink`
@@ -154,7 +163,11 @@ Apply-link cleanup (manual, on-demand — same verifier the cron uses):
 
 ### Blog admin — `/api/admin` (`requireAuth` + Zod validate)
 - `POST /blogs`, `GET /blogs`, `GET /blogs/:id`, `PATCH /blogs/:id`,
-  `DELETE /blogs/:id`, `POST /blogs/:id/publish`, `POST /upload`
+  `POST /blogs/:id/archive` (soft-delete → `status: "archived"`),
+  `DELETE /blogs/:id?permanent=true` (permanent),
+  `POST /blogs/:id/publish`, `POST /upload`
+- Blog has no `/restore` endpoint yet (jobs v2 + companies v2 do); un-archiving
+  a post today means `PATCH`ing its status.
 - On publish/update, fires Next.js revalidation webhook if
   `NEXT_REVALIDATION_URL` + `REVALIDATE_SECRET` are set.
 
@@ -167,6 +180,16 @@ Apply-link cleanup (manual, on-demand — same verifier the cron uses):
 - `GET /logs`, `GET /health`
 - `POST /test-adapter/:name` — dry-run an adapter (no save)
 - `POST /stop/:adapterName` — request adapter stop (cooperative)
+
+### GET /api/admin/jobs/v2 query params
+`page`, `limit` (max 100), `status`, `search` (text index), `company` (ObjectId),
+`employmentType` (single enum value — matches "array contains"),
+`batch` (year, coerced to Number to match the `[Number]` field),
+`excludeArchived=true` (Active tab — hides both archive shapes).
+`status=archived` includes soft-deleted jobs; every other mode excludes them.
+Zod strips unknown query keys **silently**, so a filter the schema doesn't
+declare is a no-op, not an error — add new list filters to
+`listJobV2QuerySchema` or they will quietly do nothing.
 
 ### GET /jd/get query params
 - `page`, `size` — pagination (size clamped 1–100)
@@ -239,6 +262,26 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
 `jobsSkipped`, `errors[]`, `durationMs`, `status`), and totals.
 
 ## Conventions
+- **Archive vs delete.** `POST /:id/archive` is always the reversible soft
+  delete (sets `deletedAt` + `status: "archived"`, or just `status` for blogs);
+  `DELETE /:id` always removes the document from Mongo for good. Every v2 and
+  blog admin resource follows this split — never make `DELETE` soft again.
+  v1 (`/jd/delete/:id`, `/companydetails/delete/:id`) and scraper staging only
+  have the permanent `DELETE`; there is no archive there.
+- **Hard deletes require `?permanent=true`** (`middleware/requirePermanentFlag`),
+  else 400. Forces the caller to state intent in the URL so a stale client that
+  still thinks `DELETE` means "archive" can't wipe a document. Apply it to every
+  new hard-delete route.
+- `POST /:id/restore` un-archives to a *non-live* status (`draft` for jobs,
+  `inactive` for companies) — never straight back to published. A job archived
+  for a dead apply link must not silently go live again.
+- **Two archive shapes exist.** The cron sweeps (`archiveExpiredJobs`, the link
+  verifier) set `status: "archived"` and leave `deletedAt` null;
+  `POST /:id/archive` sets both. Anything that asks "is this archived?" must
+  accept both — restore matches
+  `$or: [{ deletedAt: { $ne: null } }, { status: "archived" }]`, and
+  `GET /admin/jobs/v2?status=archived` deliberately drops the `deletedAt: null`
+  filter so UI-archived jobs stay visible and restorable.
 - v1 controllers respond via `apiErrorHandler` / `jobDetailsHandler` —
   shape is `{ success, data, error }` (or `{ message }` for writes).
 - v2 endpoints respond `{ data: ... }` with HTTP status codes; admin write

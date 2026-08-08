@@ -153,9 +153,12 @@ exports.updateCompanyV2 = async (req, res) => {
 };
 
 /**
- * DELETE /api/admin/companies/v2/:id — Soft delete (blocks if active jobs exist)
+ * POST /api/admin/companies/v2/:id/archive — Soft delete (reversible)
+ *
+ * Blocks while published jobs still point here. The document stays in Mongo so
+ * archived jobs keep resolving their company ref.
  */
-exports.deleteCompanyV2 = async (req, res) => {
+exports.archiveCompanyV2 = async (req, res) => {
     try {
         const id = req.params.id;
 
@@ -182,6 +185,70 @@ exports.deleteCompanyV2 = async (req, res) => {
         return res.status(200).json({
             message: "Company archived",
             data: { _id: updated._id, deletedAt: updated.deletedAt, status: updated.status },
+        });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
+};
+
+/**
+ * POST /api/admin/companies/v2/:id/restore — Undo an archive
+ *
+ * Clears deletedAt and returns the company to "inactive" (CompanyV2's status
+ * enum is active|inactive|archived — there is no draft). Going live again is a
+ * deliberate step. 404 when it isn't currently archived.
+ */
+exports.restoreCompanyV2 = async (req, res) => {
+    try {
+        const restored = await CompanyV2.findOneAndUpdate(
+            {
+                _id: req.params.id,
+                $or: [{ deletedAt: { $ne: null } }, { status: "archived" }],
+            },
+            { $set: { deletedAt: null, status: "inactive" } },
+            { new: true }
+        );
+
+        if (!restored) {
+            return res.status(404).json({ error: "Company not found or not archived" });
+        }
+
+        return res.status(200).json({
+            message: "Company restored",
+            data: { _id: restored._id, deletedAt: restored.deletedAt, status: restored.status },
+        });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
+};
+
+/**
+ * DELETE /api/admin/companies/v2/:id?permanent=true — Permanent delete (irreversible)
+ *
+ * Blocks while ANY job document still references the company — including
+ * archived and soft-deleted ones, since JobV2.company is a required ref and
+ * removing the company would leave those jobs unresolvable. Frees the unique
+ * companyName + slug for reuse.
+ */
+exports.hardDeleteCompanyV2 = async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        const referencingJobs = await JobV2.countDocuments({ company: id });
+
+        if (referencingJobs > 0) {
+            return res.status(409).json({
+                error: `Cannot delete: ${referencingJobs} job(s) still reference this company. Delete or reassign those jobs first.`,
+            });
+        }
+
+        const deleted = await CompanyV2.findByIdAndDelete(id);
+
+        if (!deleted) return res.status(404).json({ error: "Company not found" });
+
+        return res.status(200).json({
+            message: "Company permanently deleted",
+            data: { _id: deleted._id, slug: deleted.slug, companyName: deleted.companyName },
         });
     } catch (err) {
         return apiErrorHandler(err, res);

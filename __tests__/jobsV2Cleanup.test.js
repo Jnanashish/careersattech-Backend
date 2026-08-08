@@ -108,15 +108,15 @@ describe("GET /api/admin/jobs/v2/flagged", () => {
     });
 });
 
-describe("POST /api/admin/jobs/v2/flagged/purge", () => {
-    test("all:true soft-deletes every flagged job, leaves the rest", async () => {
+describe("POST /api/admin/jobs/v2/flagged/archive", () => {
+    test("all:true archives every flagged job, leaves the rest", async () => {
         const { active, expired, neverChecked } = await seedAll();
         const res = await request(app)
-            .post("/api/admin/jobs/v2/flagged/purge")
+            .post("/api/admin/jobs/v2/flagged/archive")
             .set(auth)
             .send({ all: true });
         expect(res.status).toBe(200);
-        expect(res.body.deleted).toBe(1);
+        expect(res.body.archived).toBe(1);
 
         for (const id of [expired._id]) {
             const fresh = await JobV2.findById(id).lean();
@@ -132,14 +132,14 @@ describe("POST /api/admin/jobs/v2/flagged/purge", () => {
         expect(after.body.total).toBe(0);
     });
 
-    test("ids:[..] soft-deletes only the given jobs", async () => {
+    test("ids:[..] archives only the given jobs", async () => {
         const { active, expired } = await seedAll();
         const res = await request(app)
-            .post("/api/admin/jobs/v2/flagged/purge")
+            .post("/api/admin/jobs/v2/flagged/archive")
             .set(auth)
             .send({ ids: [String(expired._id)] });
         expect(res.status).toBe(200);
-        expect(res.body.deleted).toBe(1);
+        expect(res.body.archived).toBe(1);
         expect((await JobV2.findById(expired._id).lean()).deletedAt).toBeInstanceOf(Date);
         expect((await JobV2.findById(active._id).lean()).deletedAt).toBeNull();
     });
@@ -147,7 +147,7 @@ describe("POST /api/admin/jobs/v2/flagged/purge", () => {
     test("empty body is rejected (no accidental bulk wipe)", async () => {
         await seedAll();
         const res = await request(app)
-            .post("/api/admin/jobs/v2/flagged/purge")
+            .post("/api/admin/jobs/v2/flagged/archive")
             .set(auth)
             .send({});
         expect(res.status).toBe(400);
@@ -155,7 +155,7 @@ describe("POST /api/admin/jobs/v2/flagged/purge", () => {
 
     test("invalid id in list is rejected by the validator", async () => {
         const res = await request(app)
-            .post("/api/admin/jobs/v2/flagged/purge")
+            .post("/api/admin/jobs/v2/flagged/archive")
             .set(auth)
             .send({ ids: ["not-an-objectid"] });
         expect(res.status).toBe(400);

@@ -116,6 +116,15 @@ const listJobV2QuerySchema = z.object({
     status: z.enum(JOB_STATUS).optional(),
     search: z.string().max(200).optional(),
     company: objectIdSchema.optional(),
+    // Admin "Active" tab: hide archived jobs regardless of how they got there
+    // (cron sets status only, the archive endpoint also sets deletedAt).
+    excludeArchived: z.enum(["true", "false"]).optional(),
+    // Admin list filters. Both target array fields, so an equality match on the
+    // scalar is what Mongo needs ("contains this value").
+    employmentType: z.enum(EMPLOYMENT_TYPE).optional(),
+    // Coerced: the query string carries "2025" but batch is [Number], and a
+    // string would silently match nothing.
+    batch: z.coerce.number().int().min(2020).max(2030).optional(),
 });
 
 // ─── Apply-link verification / flagged-job cleanup ──────────────
@@ -131,9 +140,9 @@ const flaggedQuerySchema = z.object({
     result: z.enum(FLAGGED_RESULT).optional(),
 });
 
-// Bulk soft-delete must declare intent: a non-empty id list OR all:true.
+// Bulk archive must declare intent: a non-empty id list OR all:true.
 // An empty body is rejected so a stray POST can never wipe the queue.
-const purgeFlaggedSchema = z
+const archiveFlaggedSchema = z
     .object({
         ids: z.array(objectIdSchema).max(1000).optional(),
         all: z.boolean().optional(),
@@ -178,7 +187,7 @@ module.exports = {
     listJobV2QuerySchema,
     verifyNowSchema,
     flaggedQuerySchema,
-    purgeFlaggedSchema,
+    archiveFlaggedSchema,
     validate,
     validateQuery,
     JOB_STATUS,

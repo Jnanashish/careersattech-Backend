@@ -1,11 +1,19 @@
 const axios = require("axios");
 const { filterKnownUrls } = require("../ingester");
+const { fetchApplyPageContent } = require("../applyPageContent");
+const logger = require("../../../utils/logger");
 
 const API_BASE = "https://www.onlyfrontendjobs.com/api/jobs";
 const PAGE_SIZE = 10;
 const MAX_JOBS = 100;
+const MAX_PAGE_CONTENT = 16000;
+const APPLY_FETCH_DELAY_MS = 1000;
 
-function formatPageContent(job) {
+function sleep(ms) {
+    return new Promise((r) => setTimeout(r,ms));
+}
+
+function formatPageContent(job,applyPage) {
     const parts = [
         `Job Title: ${job.title}`,
         `Company: ${job.company}`,
@@ -26,10 +34,6 @@ function formatPageContent(job) {
         parts.push(`Tech Stack: ${job.tech_stack.join(", ")}`);
     }
 
-    if (job.description) {
-        parts.push("","Job Description:",job.description);
-    }
-
     if (job.apply_url) {
         parts.push("",`Apply URL: ${job.apply_url}`);
     }
@@ -47,7 +51,22 @@ function formatPageContent(job) {
         parts.push(`Tags: ${flags.join(", ")}`);
     }
 
-    return parts.join("\n").slice(0,8000);
+    // short_pitch is the only prose the list API actually returns. The
+    // `description` field this adapter used to read has never been present on
+    // the response, which is why transformed JDs came out at ~40 words.
+    if (job.short_pitch) {
+        parts.push("",`Summary: ${job.short_pitch}`);
+    }
+
+    // Long-form content goes last so the length cap trims the tail of the
+    // description rather than dropping the metadata above it.
+    if (applyPage && applyPage.text) {
+        parts.push("",`OFFICIAL JOB POSTING (fetched from ${job.apply_url}):`,applyPage.text);
+    } else if (job.description) {
+        parts.push("","Job Description:",job.description);
+    }
+
+    return parts.join("\n").slice(0,MAX_PAGE_CONTENT);
 }
 
 module.exports = {
@@ -59,9 +78,16 @@ module.exports = {
     selectors: { jobLinks: { limit: 20 },companyUrl: {},meta: {} },
     options: { delayMs: 1000,headers: {},pagination: { enabled: false } },
 
+    formatPageContent,
+
     async scrape(options = {}) {
         const limit = options.limit || this.selectors.jobLinks.limit;
-        const stats = { jobLinksFound: 0,jobsFetched: 0,errors: [] };
+        const fetchPageImpl = options.fetchPageImpl;
+        // No delay when a fetcher is injected — that means no real network.
+        const applyDelayMs = options.applyDelayMs != null
+            ? options.applyDelayMs
+            : (fetchPageImpl ? 0 : APPLY_FETCH_DELAY_MS);
+        const stats = { jobLinksFound: 0,jobsFetched: 0,applyPagesFetched: 0,applyPagesMissed: 0,errors: [] };
         const jobs = [];
 
         let skip = 0;
@@ -98,6 +124,13 @@ module.exports = {
                         continue;
                     }
 
+                    // The list API carries no description, so follow the apply
+                    // link to the company's own posting — that page is the only
+                    // source of real JD text in this pipeline.
+                    const applyPage = await fetchApplyPageContent(job.apply_url,{ fetchPageImpl });
+                    if (applyPage) stats.applyPagesFetched++;
+                    else stats.applyPagesMissed++;
+
                     jobs.push({
                         source: "onlyfrontendjobs",
                         sourceUrl,
@@ -107,12 +140,16 @@ module.exports = {
                             company: job.company,
                             postedDate: job.published_at,
                         },
-                        pageContent: formatPageContent(job),
+                        pageContent: formatPageContent(job,applyPage),
+                        // Deliberately null: the apply page is already embedded
+                        // in pageContent above, and sending it twice just
+                        // doubles the transformer's token bill.
                         companyPageContent: null,
                     });
 
                     stats.jobsFetched++;
                     if (jobs.length >= limit) break;
+                    if (applyDelayMs) await sleep(applyDelayMs);
                 }
 
                 skip += batchSize;
@@ -126,7 +163,10 @@ module.exports = {
             }
         }
 
-        console.log(`[Scraper] OnlyFrontendJobs: fetched ${stats.jobsFetched} jobs (API total: ${total})`);
+        logger.info(
+            `[Scraper] OnlyFrontendJobs: fetched ${stats.jobsFetched} jobs (API total: ${total}); ` +
+            `apply pages extracted ${stats.applyPagesFetched}, unavailable ${stats.applyPagesMissed}`
+        );
         return { jobs,stats };
     },
 };

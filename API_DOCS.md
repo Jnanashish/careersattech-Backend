@@ -770,17 +770,42 @@ Any field from the create schema can be updated. If `content` or `title` changes
 
 ---
 
-#### Delete (Archive) Blog
+#### Archive Blog (reversible)
 
 ```
-DELETE /api/admin/blogs/:id
+POST /api/admin/blogs/:id/archive
 ```
 
-Soft-deletes by setting `status: "archived"`. The post is hidden from public endpoints.
+Sets `status: "archived"`. The post is hidden from public endpoints but the
+document stays in the database, so it can be re-published later.
 
 **Response (200):**
 ```json
 { "message": "Blog archived" }
+```
+
+---
+
+#### Delete Blog (permanent)
+
+```
+DELETE /api/admin/blogs/:id?permanent=true
+```
+
+**Permanently removes the document.** This cannot be undone. The slug is freed
+for reuse and the Next.js cache is revalidated so the dead route drops out.
+Use `POST /:id/archive` if you only want to hide the post.
+
+`?permanent=true` is **required** — without it the request is rejected with
+400, so a client that still treats `DELETE` as "archive" cannot destroy a post
+by accident.
+
+**Response (200):**
+```json
+{
+  "message": "Blog permanently deleted",
+  "data": { "_id": "...", "slug": "my-post" }
+}
 ```
 
 ---

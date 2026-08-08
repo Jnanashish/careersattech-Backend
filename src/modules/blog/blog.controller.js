@@ -134,9 +134,12 @@ exports.updateBlog = async (req, res) => {
 };
 
 /**
- * DELETE /api/admin/blogs/:id — Soft delete (archive)
+ * POST /api/admin/blogs/:id/archive — Soft delete (reversible)
+ *
+ * Flips status to "archived" so the post drops out of public listings while the
+ * document stays in Mongo. Use DELETE /:id to remove it for good.
  */
-exports.deleteBlog = async (req, res) => {
+exports.archiveBlog = async (req, res) => {
     try {
         const blog = await Blog.findById(req.params.id);
         if (!blog) return res.status(404).json({ error: "Blog not found" });
@@ -148,6 +151,28 @@ exports.deleteBlog = async (req, res) => {
         triggerRevalidation(slug);
 
         return res.status(200).json({ message: "Blog archived" });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
+};
+
+/**
+ * DELETE /api/admin/blogs/:id — Permanent delete (irreversible)
+ *
+ * Removes the post document outright and frees its unique slug. Revalidation
+ * still fires so the Next.js cache drops the now-dead route.
+ */
+exports.hardDeleteBlog = async (req, res) => {
+    try {
+        const deleted = await Blog.findByIdAndDelete(req.params.id);
+        if (!deleted) return res.status(404).json({ error: "Blog not found" });
+
+        triggerRevalidation(deleted.slug);
+
+        return res.status(200).json({
+            message: "Blog permanently deleted",
+            data: { _id: deleted._id, slug: deleted.slug },
+        });
     } catch (err) {
         return apiErrorHandler(err, res);
     }
