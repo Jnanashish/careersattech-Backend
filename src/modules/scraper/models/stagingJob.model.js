@@ -121,11 +121,19 @@ const stagingJobSchema = new mongoose.Schema(
         approvedAt: Date,
         approvedJob: { type: mongoose.Schema.Types.ObjectId, ref: "JobV2" },
         aiProvider: String,
+
+        // Auto-publish bookkeeping. The pipeline retries pending rows on every
+        // run (the backlog drain), so we count attempts and stop retrying a row
+        // that keeps failing the publish-readiness gate — it then waits for a
+        // human in the review queue instead of burning a retry every run.
+        autoPublishAttempts: { type: Number, default: 0 },
+        lastAutoPublishError: String,
     },
     { timestamps: true }
 );
 
 stagingJobSchema.index({ scrapedAt: -1 });
+stagingJobSchema.index({ status: 1, autoPublishAttempts: 1 });
 stagingJobSchema.index({ "jobData.applyLink": 1 });
 stagingJobSchema.index({ "jobData.externalJobId": 1 });
 

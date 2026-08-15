@@ -172,11 +172,15 @@ archived ones included)
   `NEXT_REVALIDATION_URL` + `REVALIDATE_SECRET` are set.
 
 ### Scraper admin — `/api/admin/scrape` (auth: `x-admin-secret` header)
-- `POST /run` — kick off pipeline asynchronously
+- `POST /run` — kick off pipeline asynchronously. Body: `{ adapter?, autoPublish? }`.
+  `autoPublish` overrides the default for that run only.
 - `GET /staging`, `GET /staging/:id`, `DELETE /staging/:id`
-- `POST /staging/:id/approve` — copy staging → `Jobdesc` (v1)
+- `POST /staging/:id/approve` — publish staging → `JobV2` (+ create/link CompanyV2)
 - `POST /staging/:id/reject`
 - `POST /staging/approve-bulk` — `{ ids: [...] }`
+- `POST /staging/publish-pending` — drain the pending backlog now (same routine
+  every run does first). Body `{ limit? (1–500, default 100), source?,
+  retryExhausted? }` → `{ scanned, published, failed }`.
 - `GET /logs`, `GET /health`
 - `POST /test-adapter/:name` — dry-run an adapter (no save)
 - `POST /stop/:adapterName` — request adapter stop (cooperative)
@@ -251,10 +255,15 @@ TTL index expires docs after 180 days.
 `publishedAt`, `scheduledFor`, `views`.
 
 ### StagingJob (scraper)
-Buffered scraped jobs awaiting human approval. `status`
+Ingest buffer + dedupe ledger for scraped jobs. `status`
 (`pending|approved|rejected`), `fingerprint` (unique, used for dedupe),
-`source`, `sourceUrl`, `companyPageUrl`, `jobData` (mirrors Jobdesc fields),
-`aiProvider`, `rejectedReason`, `approvedAt`.
+`source`, `sourceUrl`, `companyPageUrl`, `jobData`/`companyData` (mirror JobV2 /
+CompanyV2 fields), `matchedCompany`, `aiProvider`, `rejectedReason`,
+`approvedAt`, `approvedJob`, `autoPublishAttempts` + `lastAutoPublishError`
+(auto-publish bookkeeping).
+Every scraped job is written here first, but with auto-publish on (the default)
+it is approved in the same run — rows only sit at `pending` when they fail the
+publish-readiness gate. See "Scraper auto-publish".
 
 ### ScrapeLog (scraper)
 Per-run summary: `runId`, `trigger` (`manual|cron`), `aiProvider`, per-adapter
@@ -298,6 +307,31 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
   `req.sessionHash` + `req.ipHash` (sha256 of ip + `CLICK_HASH_PEPPER`). Pepper
   is **required** — module throws on import if missing.
 - Scraper pre-filters by fingerprint before calling the LLM (saves API calls).
+- **Scraper auto-publish.** Scraped jobs go live without human review. The
+  pipeline still writes each job to `StagingJob` (dedupe fingerprints live
+  there), then immediately runs it through the same `approveStagingJob` routine
+  the manual approve button uses — creating/linking the `CompanyV2` and creating
+  a `published` `JobV2`. The staging row is marked `approved` with `approvedBy:
+  "auto-scraper:<adapter>"`, so the review queue (`status=pending`) stays empty.
+  Publishing is gated on `validatePublishReadiness`: a job missing required
+  fields is **left `pending` in staging** instead of published, so the manual
+  queue is still the fallback — never a silent drop. Failures are isolated per
+  job; one bad row never aborts the batch.
+  Default is on; `SCRAPER_AUTO_PUBLISH=false` (or `POST /admin/scrape/run` with
+  `{ autoPublish: false }`) restores the manual review flow. The queue code and
+  its endpoints are untouched — this is a bypass, not a removal.
+- **Pending-backlog drain.** Per-adapter auto-publish only sees rows the current
+  run created, and dedupe stops a re-scrape from re-staging a job that is
+  already in staging — so anything staged while the bypass was off would sit
+  `pending` forever. Every run therefore starts with `publishPendingBacklog()`
+  (up to 100 rows, oldest first) before touching the adapters — before, so it
+  never re-tries a row the same run just failed. `POST
+  /admin/scrape/staging/publish-pending` runs it on demand. Each failure bumps
+  `autoPublishAttempts` and stores `lastAutoPublishError`; after
+  `MAX_AUTO_PUBLISH_ATTEMPTS` (3) the drain skips the row and it waits for a
+  human (`retryExhausted: true` forces a retry). The filter has an
+  `$exists: false` arm — rows predating the counter have no field, and a bare
+  `$lt` would exclude exactly the backlog this exists to clear.
 - Blog publish/update fires a Next.js ISR revalidation webhook when configured.
 - All v2 / blog / admin write routes validate with Zod before reaching the
   controller; validated payload is on `req.validated`.
@@ -349,6 +383,8 @@ CLAUDE_API_KEY, CLAUDE_MODEL,
 OPENROUTER_API_KEY, OPENROUTER_MODEL
 SCRAPERAPI_KEY          # optional fetch proxy (5K free/month)
 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+SCRAPER_TZ=Asia/Kolkata # cron stagger timezone
+SCRAPER_AUTO_PUBLISH    # defaults ON; set "false" to require manual approval
 
 # Blog
 BLOG_CLOUDINARY_FOLDER=blog

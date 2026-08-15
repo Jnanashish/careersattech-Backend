@@ -30,6 +30,9 @@ const scrapeLogSchema = new mongoose.Schema(
         summary: {
             totalNew: Number,
             totalPublished: Number,
+            // Subset of totalPublished that came from the pending-backlog drain
+            // (rows staged by an earlier run) rather than this run's fresh jobs.
+            totalBacklogPublished: Number,
             totalSkipped: Number,
             totalErrors: Number,
             adaptersSucceeded: [String],

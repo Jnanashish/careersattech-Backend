@@ -9,6 +9,7 @@ const {
     approveStagingJob,
     isDuplicateKeyError,
     duplicateKeyMessage,
+    publishPendingBacklog,
 } = require("./publisher");
 const { requestStop, clearStop, getAll: getStopFlags } = require("./stopFlags");
 const requireAdminSecret = require("../../middleware/adminSecret");
@@ -63,10 +64,10 @@ function resolveApprovedBy(req, bodyApprovedBy) {
 // Body: { adapter?: string } — when provided, runs only that adapter
 // (allowing disabled-by-default adapters like "peerlist" to be triggered
 // from the UI). When omitted, runs the default enabled registry.
-// Body: { autoPublish?: boolean } — per-run override of the
-// SCRAPER_AUTO_PUBLISH env default. true → publish scraped jobs straight to
-// JobV2 (skip the staging review queue); false → force review even if the env
-// default is on. Omitted → use the env default.
+// Body: { autoPublish?: boolean } — per-run override of the auto-publish
+// default (ON unless SCRAPER_AUTO_PUBLISH=false). true → publish scraped jobs
+// straight to JobV2 (skip the staging review queue); false → force human review
+// for this run. Omitted → use the default.
 router.post("/admin/scrape/run", async (req, res, next) => {
     try {
         const adapterName = req.body && typeof req.body.adapter === "string"
@@ -262,6 +263,35 @@ router.post("/admin/scrape/staging/approve-bulk", async (req, res, next) => {
 
         res.json({ approved, failed, errors });
     } catch (err) {
+        return next(err);
+    }
+});
+
+// POST /admin/scrape/staging/publish-pending — drain the pending backlog now.
+// Same routine the pipeline runs after each scrape; exposed so a backlog can be
+// cleared without waiting for the next cron. Body:
+//   { limit?: number (1–500, default 100), source?: string (single adapter),
+//     retryExhausted?: boolean — also retry rows that already failed
+//     MAX_AUTO_PUBLISH_ATTEMPTS times }
+// Rows that fail the publish-readiness gate stay pending for manual review.
+router.post("/admin/scrape/staging/publish-pending", async (req, res, next) => {
+    try {
+        const { limit, source, retryExhausted } = req.body || {};
+
+        const result = await publishPendingBacklog({
+            limit,
+            source: typeof source === "string" && source.trim() ? source.trim() : undefined,
+            retryExhausted: retryExhausted === true,
+            approvedBy: resolveApprovedBy(req),
+        });
+
+        logger.info(
+            `[Admin] Backlog drain: published ${result.published}/${result.scanned} ` +
+            `(${result.failed} still pending)`
+        );
+        res.json(result);
+    } catch (err) {
+        logger.error(`[Admin] Backlog drain failed: ${err.message}`);
         return next(err);
     }
 });

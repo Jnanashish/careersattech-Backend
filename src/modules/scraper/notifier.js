@@ -41,7 +41,8 @@ async function sendScrapeReport(scrapeLog) {
         })
         .join("\n");
 
-    const publishedTotal = s.totalPublished ? ` | ${s.totalPublished} published` : "";
+    const backlogNote = s.totalBacklogPublished ? ` (${s.totalBacklogPublished} from backlog)` : "";
+    const publishedTotal = s.totalPublished ? ` | ${s.totalPublished} published${backlogNote}` : "";
     const text =
         `<b>🔍 Scrape Run Complete</b>\n` +
         `Trigger: ${scrapeLog.trigger}\n` +

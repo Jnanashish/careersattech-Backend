@@ -1,5 +1,6 @@
 const CompanyV2 = require("../companiesV2/companiesV2.model");
 const JobV2 = require("./../jobsV2/jobsV2.model");
+const StagingJob = require("./models/stagingJob.model");
 const { findCompanyByName } = require("./ingester");
 const { generateCompanySlug } = require("../../utils/slugify");
 const { resolveUniqueJobSlug } = require("../jobsV2/resolveJobSlug");
@@ -13,8 +14,9 @@ const logger = require("../../utils/logger");
  * publish-readiness, create the job, and stamp audit fields back on staging.
  *
  * Two callers share it:
- *   - scraper.admin.routes.js  → manual approve / approve-bulk (human review)
- *   - scraper.scheduler.js     → auto-publish bypass (skip the review queue)
+ *   - scraper.scheduler.js     → auto-publish bypass (default; skips review)
+ *   - scraper.admin.routes.js  → manual approve / approve-bulk, still available
+ *     for jobs the bypass left behind (not publish-ready)
  *
  * Extracted here (rather than left in the routes file) so the scheduler can
  * reuse it without importing the Express router — that would create a circular
@@ -231,8 +233,9 @@ async function approveStagingJob(staging, overrides, approvedBy) {
 
 /**
  * Auto-publish bypass: run freshly-staged jobs straight through the approve
- * routine without waiting for human review. Used by the scraper pipeline when
- * SCRAPER_AUTO_PUBLISH is on (or a manual run passes autoPublish: true).
+ * routine without waiting for human review. This is the scraper pipeline's
+ * default path (disable with SCRAPER_AUTO_PUBLISH=false, or per run with
+ * autoPublish: false).
  *
  * Failure isolation is per-job: a validation miss or duplicate-key conflict on
  * one staging row never aborts the batch. Jobs that fail the publish-readiness
@@ -254,25 +257,84 @@ async function autoPublishStaged(stagingDocs, opts = {}) {
             const result = await approveStagingJob(staging, {}, approvedBy);
             if (result.fieldErrors) {
                 failed++;
-                logger.warn(
-                    `[AutoPublish] Left in staging (not publish-ready): ${title} — ` +
-                    result.fieldErrors.map((e) => `${e.path}: ${e.message}`).join("; ")
-                );
+                const reason = result.fieldErrors.map((e) => `${e.path}: ${e.message}`).join("; ");
+                logger.warn(`[AutoPublish] Left in staging (not publish-ready): ${title} — ${reason}`);
+                await recordAutoPublishFailure(staging, reason);
                 continue;
             }
             published++;
             logger.info(`[AutoPublish] Published: ${title} (${result.job._id})`);
         } catch (err) {
             failed++;
-            if (isDuplicateKeyError(err)) {
-                logger.error(`[AutoPublish] Duplicate key on "${title}": ${duplicateKeyMessage(err)}`);
-            } else {
-                logger.error(`[AutoPublish] Failed to publish "${title}": ${err.message}`);
-            }
+            const reason = isDuplicateKeyError(err) ? duplicateKeyMessage(err) : err.message;
+            logger.error(`[AutoPublish] Failed to publish "${title}": ${reason}`);
+            await recordAutoPublishFailure(staging, reason);
         }
     }
 
     return { published, failed };
+}
+
+/**
+ * A pending row that keeps failing the readiness gate would otherwise be retried
+ * by every single run forever. After this many attempts the drain leaves it
+ * alone and it waits for a human in the review queue.
+ */
+const MAX_AUTO_PUBLISH_ATTEMPTS = 3;
+
+/**
+ * Stamp the failure on the staging row so the drain can stop retrying it and an
+ * admin can see why it never went live. Best-effort: a bookkeeping write that
+ * fails must not turn a skipped job into a thrown pipeline error.
+ */
+async function recordAutoPublishFailure(staging, reason) {
+    if (!staging || typeof staging.save !== "function") return;
+    try {
+        staging.autoPublishAttempts = (staging.autoPublishAttempts || 0) + 1;
+        staging.lastAutoPublishError = String(reason || "").slice(0, 500);
+        await staging.save();
+    } catch (err) {
+        logger.warn(`[AutoPublish] Could not record failure on staging row: ${err.message}`);
+    }
+}
+
+/**
+ * Drain the pending backlog.
+ *
+ * `autoPublishStaged` only ever sees the rows a run just created, so anything
+ * staged before the bypass existed (or left behind while it was off) would sit
+ * `pending` forever — dedupe means a re-scrape skips those jobs instead of
+ * re-staging them. This sweeps the queue itself and publishes what is ready.
+ *
+ * Rows that have already failed MAX_AUTO_PUBLISH_ATTEMPTS times are skipped
+ * (pass `retryExhausted: true` to include them anyway). The `$exists: false`
+ * arm matters: rows staged before this field existed have no counter at all,
+ * and a bare `$lt` would silently exclude exactly the backlog we came for.
+ *
+ * @param {{ limit?: number, source?: string, retryExhausted?: boolean, approvedBy?: string }} [opts]
+ * @returns {Promise<{ scanned: number, published: number, failed: number }>}
+ */
+async function publishPendingBacklog(opts = {}) {
+    const parsedLimit = parseInt(opts.limit, 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 100 : parsedLimit, 1), 500);
+
+    const filter = { status: "pending" };
+    if (opts.source) filter.source = opts.source;
+    if (!opts.retryExhausted) {
+        filter.$or = [
+            { autoPublishAttempts: { $exists: false } },
+            { autoPublishAttempts: { $lt: MAX_AUTO_PUBLISH_ATTEMPTS } },
+        ];
+    }
+
+    const docs = await StagingJob.find(filter).sort({ scrapedAt: 1 }).limit(limit);
+    if (docs.length === 0) return { scanned: 0, published: 0, failed: 0 };
+
+    const { published, failed } = await autoPublishStaged(docs, {
+        approvedBy: opts.approvedBy || "auto-scraper:backlog",
+    });
+
+    return { scanned: docs.length, published, failed };
 }
 
 module.exports = {
@@ -284,4 +346,6 @@ module.exports = {
     mongooseValidationToFieldErrors,
     approveStagingJob,
     autoPublishStaged,
+    publishPendingBacklog,
+    MAX_AUTO_PUBLISH_ATTEMPTS,
 };

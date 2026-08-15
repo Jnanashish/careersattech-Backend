@@ -3,23 +3,32 @@ const { randomUUID } = require("crypto");
 const { scrapeAll, getAdapterByName } = require("../modules/scraper/scraper.fetch");
 const { transformBatch } = require("../modules/scraper/transformer");
 const { ingest, filterKnownJobs } = require("../modules/scraper/ingester");
-const { autoPublishStaged } = require("../modules/scraper/publisher");
+const { autoPublishStaged, publishPendingBacklog } = require("../modules/scraper/publisher");
 const { getProvider } = require("../modules/scraper/providers");
 const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
 const notifier = require("../modules/scraper/notifier");
 const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
+
+// How many pending staging rows one run may sweep. Five adapter crons a day →
+// up to 500 backlog rows cleared daily, without one run doing an unbounded scan.
+const BACKLOG_DRAIN_LIMIT = 100;
 
 async function runPipeline(trigger = "manual", adapterList = undefined, opts = {}) {
     const runId = randomUUID();
     const startedAt = new Date();
     const aiProvider = getProvider().name;
 
-    // Auto-publish bypass: when on, scraped jobs are published straight to
-    // JobV2 (skipping the staging review queue). Per-run opts.autoPublish wins;
-    // otherwise fall back to the SCRAPER_AUTO_PUBLISH env default (off).
+    // Auto-publish bypass: scraped jobs go live in JobV2 immediately instead of
+    // waiting in the staging review queue. ON by default — no manual approval
+    // step. Set SCRAPER_AUTO_PUBLISH=false to fall back to human review; a
+    // per-run opts.autoPublish wins over both.
+    //
+    // The staging queue is bypassed, not removed: every job is still written to
+    // StagingJob first (that's where dedupe fingerprints live), and any job that
+    // fails the publish-readiness gate stays `pending` there for manual review.
     const autoPublish = typeof opts.autoPublish === "boolean"
         ? opts.autoPublish
-        : process.env.SCRAPER_AUTO_PUBLISH === "true";
+        : process.env.SCRAPER_AUTO_PUBLISH !== "false";
 
     console.log(
         `[Scheduler] Starting scrape run ${runId} ` +
@@ -30,9 +39,38 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
     let totalNew = 0;
     let totalSkipped = 0;
     let totalPublished = 0;
+    let totalBacklogPublished = 0;
     let totalErrors = 0;
     const adaptersSucceeded = [];
     const adaptersFailed = [];
+
+    // Drain the pending backlog first: rows staged by an earlier run (before
+    // the bypass existed, or while it was off) are invisible to the per-adapter
+    // auto-publish below, which only sees what this run created — and dedupe
+    // means a re-scrape skips those jobs rather than re-staging them, so
+    // without this they stay pending forever.
+    //
+    // Runs before the adapters (not after) so it never immediately re-tries a
+    // row this same run just failed the readiness gate on. Never throws: a
+    // broken drain must not take the scrape down with it.
+    if (autoPublish) {
+        try {
+            const backlog = await publishPendingBacklog({
+                limit: BACKLOG_DRAIN_LIMIT,
+                approvedBy: "auto-scraper:backlog",
+            });
+            totalBacklogPublished = backlog.published;
+            totalPublished += backlog.published;
+            if (backlog.scanned > 0) {
+                console.log(
+                    `[Scheduler] Backlog drain: published ${backlog.published}/${backlog.scanned} ` +
+                    `pending staging rows (${backlog.failed} still pending)`
+                );
+            }
+        } catch (err) {
+            console.error(`[Scheduler] Backlog drain failed: ${err.message}`);
+        }
+    }
 
     try {
         const scrapeResults = await scrapeAll(adapterList);
@@ -160,6 +198,7 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
         summary: {
             totalNew,
             totalPublished,
+            totalBacklogPublished,
             totalSkipped,
             totalErrors,
             adaptersSucceeded,
@@ -176,7 +215,8 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
 
     console.log(
         `[Scheduler] Run ${runId} complete: ${totalNew} new, ` +
-        `${totalPublished} published, ${totalSkipped} skipped, ${totalErrors} errors`
+        `${totalPublished} published (${totalBacklogPublished} from backlog), ` +
+        `${totalSkipped} skipped, ${totalErrors} errors`
     );
 
     // Check consecutive failures
