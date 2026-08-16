@@ -140,9 +140,9 @@ const flaggedQuerySchema = z.object({
     result: z.enum(FLAGGED_RESULT).optional(),
 });
 
-// Bulk archive must declare intent: a non-empty id list OR all:true.
+// Bulk archive/delete must declare intent: a non-empty id list OR all:true.
 // An empty body is rejected so a stray POST can never wipe the queue.
-const archiveFlaggedSchema = z
+const bulkFlaggedSchema = z
     .object({
         ids: z.array(objectIdSchema).max(1000).optional(),
         all: z.boolean().optional(),
@@ -187,7 +187,7 @@ module.exports = {
     listJobV2QuerySchema,
     verifyNowSchema,
     flaggedQuerySchema,
-    archiveFlaggedSchema,
+    bulkFlaggedSchema,
     validate,
     validateQuery,
     JOB_STATUS,

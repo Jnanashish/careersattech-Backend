@@ -162,6 +162,66 @@ describe("POST /api/admin/jobs/v2/flagged/archive", () => {
     });
 });
 
+describe("POST /api/admin/jobs/v2/flagged/delete", () => {
+    test("requires ?permanent=true", async () => {
+        const { expired } = await seedAll();
+        const res = await request(app)
+            .post("/api/admin/jobs/v2/flagged/delete")
+            .set(auth)
+            .send({ all: true });
+        expect(res.status).toBe(400);
+        expect(await JobV2.findById(expired._id).lean()).not.toBeNull();
+    });
+
+    test("all:true hard-deletes every flagged job, leaves the rest", async () => {
+        const { active, expired, neverChecked } = await seedAll();
+        const res = await request(app)
+            .post("/api/admin/jobs/v2/flagged/delete?permanent=true")
+            .set(auth)
+            .send({ all: true });
+        expect(res.status).toBe(200);
+        expect(res.body.deleted).toBe(1);
+
+        expect(await JobV2.findById(expired._id).lean()).toBeNull();
+        // untouched
+        expect(await JobV2.findById(active._id).lean()).not.toBeNull();
+        expect(await JobV2.findById(neverChecked._id).lean()).not.toBeNull();
+
+        // queue now empty
+        const after = await request(app).get("/api/admin/jobs/v2/flagged").set(auth);
+        expect(after.body.total).toBe(0);
+    });
+
+    test("ids:[..] hard-deletes only the given jobs", async () => {
+        const { active, expired } = await seedAll();
+        const res = await request(app)
+            .post("/api/admin/jobs/v2/flagged/delete?permanent=true")
+            .set(auth)
+            .send({ ids: [String(expired._id)] });
+        expect(res.status).toBe(200);
+        expect(res.body.deleted).toBe(1);
+        expect(await JobV2.findById(expired._id).lean()).toBeNull();
+        expect(await JobV2.findById(active._id).lean()).not.toBeNull();
+    });
+
+    test("empty body is rejected (no accidental bulk wipe)", async () => {
+        const { expired } = await seedAll();
+        const res = await request(app)
+            .post("/api/admin/jobs/v2/flagged/delete?permanent=true")
+            .set(auth)
+            .send({});
+        expect(res.status).toBe(400);
+        expect(await JobV2.findById(expired._id).lean()).not.toBeNull();
+    });
+
+    test("requires auth", async () => {
+        const res = await request(app)
+            .post("/api/admin/jobs/v2/flagged/delete?permanent=true")
+            .send({ all: true });
+        expect(res.status).toBe(401);
+    });
+});
+
 describe("POST /api/admin/jobs/v2/verify-now", () => {
     test("returns 202, runs in background, rejects a concurrent run, then reports the summary", async () => {
         let resolveRun;

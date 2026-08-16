@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const JobV2 = require("./jobsV2.model");
+const JobClickV2 = require("./jobClickV2.model");
 const { apiErrorHandler } = require("../../utils/controllerHelper");
 const { runVerification } = require("../../jobs/verifyJobs.scheduler");
 const verifyState = require("./jobsV2.verifyState");
@@ -169,6 +170,80 @@ exports.archiveFlaggedJobs = async (req, res) => {
 
         return res.status(200).json({
             archived: result.modifiedCount,
+            ids: matchedIds,
+        });
+    } catch (err) {
+        return apiErrorHandler(err, res);
+    }
+};
+
+/**
+ * POST /api/admin/jobs/v2/flagged/delete?permanent=true
+ *
+ * Permanently remove flagged jobs from Mongo. Same body contract as the bulk
+ * archive:
+ *   { ids: [..] }  → delete exactly those
+ *   { all: true }  → delete every currently-flagged job
+ *
+ * Unlike the archive this is irreversible: the documents and their click
+ * events are gone. Guarded by requirePermanentFlag (?permanent=true) so the
+ * call can never be made without stating intent, matching DELETE /:id.
+ */
+exports.deleteFlaggedJobs = async (req, res) => {
+    try {
+        const { ids, all } = req.validated || {};
+
+        let filter;
+        if (Array.isArray(ids) && ids.length > 0) {
+            // No deletedAt guard here — a hard delete removes the document
+            // whether or not it was already archived.
+            filter = {
+                _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) },
+            };
+        } else if (all) {
+            filter = buildFlaggedFilter();
+        } else {
+            // Validator should have caught this; guard anyway so a bulk delete
+            // never fires on an empty/unintended body.
+            return res.status(400).json({
+                error: "Provide a non-empty `ids` array or `all: true`",
+            });
+        }
+
+        // Resolve the exact ids first so the response is an audit of what was
+        // deleted, and so the click cleanup targets the same set.
+        const matched = await JobV2.find(filter).select("_id").lean();
+        const matchedIds = matched.map((d) => d._id);
+
+        if (matchedIds.length === 0) {
+            return res
+                .status(200)
+                .json({ deleted: 0, clickEventsDeleted: 0, ids: [] });
+        }
+
+        const result = await JobV2.deleteMany({ _id: { $in: matchedIds } });
+
+        // Click events are analytics-only; failing to clear them must not turn
+        // a completed delete into an error response.
+        let clickEventsDeleted = 0;
+        try {
+            const clicks = await JobClickV2.deleteMany({
+                job: { $in: matchedIds },
+            });
+            clickEventsDeleted = clicks.deletedCount || 0;
+        } catch (clickErr) {
+            logger.error(
+                `[verify:api] failed to clear click events for bulk-deleted jobs: ${clickErr.message}`
+            );
+        }
+
+        logger.info(
+            `[verify:api] bulk-deleted ${result.deletedCount} job(s) permanently`
+        );
+
+        return res.status(200).json({
+            deleted: result.deletedCount,
+            clickEventsDeleted,
             ids: matchedIds,
         });
     } catch (err) {

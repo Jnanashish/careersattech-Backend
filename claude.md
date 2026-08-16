@@ -143,6 +143,13 @@ Apply-link cleanup (manual, on-demand — same verifier the cron uses):
 - `POST /flagged/archive` — bulk soft-delete; body `{ ids: [...] }` or
   `{ all: true }` (empty body → 400, no accidental wipe). Responds
   `{ archived, ids }`. Never removes documents.
+- `POST /flagged/delete?permanent=true` — irreversible counterpart of the bulk
+  archive. Same body contract (`bulkFlaggedSchema` is shared), same 400 on an
+  empty body, plus `requirePermanentFlag`. Drops the documents *and* their
+  JobClickV2 events, and responds `{ deleted, clickEventsDeleted, ids }`.
+  `ids` deletes regardless of archive state; `all: true` takes the current
+  flagged set. Click cleanup failure is logged, not fatal — the jobs are
+  already gone, so the call must not report an error.
 - Routes are declared **before** `/:id` so the literal paths aren't captured
   by the ObjectId param matcher.
 

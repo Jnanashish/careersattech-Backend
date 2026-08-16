@@ -21,6 +21,7 @@ const {
     getVerifyStatus,
     listFlaggedJobs,
     archiveFlaggedJobs,
+    deleteFlaggedJobs,
 } = require("./jobsV2.cleanup.controller");
 
 const {
@@ -29,7 +30,7 @@ const {
     listJobV2QuerySchema,
     verifyNowSchema,
     flaggedQuerySchema,
-    archiveFlaggedSchema,
+    bulkFlaggedSchema,
     validate,
     validateQuery,
 } = require("./jobsV2.validators");
@@ -55,7 +56,15 @@ router.get("/admin/jobs/v2", requireAuth, validateQuery(listJobV2QuerySchema), l
 router.post("/admin/jobs/v2/verify-now", requireAuth, validate(verifyNowSchema), triggerVerifyNow);
 router.get("/admin/jobs/v2/verify-now/status", requireAuth, getVerifyStatus);
 router.get("/admin/jobs/v2/flagged", requireAuth, validateQuery(flaggedQuerySchema), listFlaggedJobs);
-router.post("/admin/jobs/v2/flagged/archive", requireAuth, validate(archiveFlaggedSchema), archiveFlaggedJobs);
+router.post("/admin/jobs/v2/flagged/archive", requireAuth, validate(bulkFlaggedSchema), archiveFlaggedJobs);
+// Irreversible counterpart of /flagged/archive — same body, gated on ?permanent=true.
+router.post(
+    "/admin/jobs/v2/flagged/delete",
+    requireAuth,
+    requirePermanentFlag,
+    validate(bulkFlaggedSchema),
+    deleteFlaggedJobs
+);
 
 router.get("/admin/jobs/v2/:id", requireAuth, validateObjectId, getJobV2);
 router.patch("/admin/jobs/v2/:id", requireAuth, validateObjectId, validate(updateJobV2Schema), updateJobV2);
