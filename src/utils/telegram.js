@@ -2,12 +2,13 @@ const axios = require("axios");
 const config = require("../config");
 const logger = require("./logger");
 
-// Three destinations, one bot. The bot token is per-bot; the chat ID is per
-// channel, so a single token posts to all three.
+// Four destinations, one bot. The bot token is per-bot; the chat ID is per
+// channel, so a single token posts to all of them.
 //
 //   scraper — anything the scrape pipeline failed at
 //   general — important backend errors (500s, process-level crashes)
 //   jobs    — the run's published-job list
+//   cleanup — scheduled jobs-directory maintenance (the expired-link sweep)
 //
 // The chat IDs are pinned in config (TELEGRAM_CHANNELS); only the bot token
 // comes from env.
@@ -15,6 +16,7 @@ const CHANNELS = {
     scraper: () => config.telegram.scraperErrorsChatId,
     general: () => config.telegram.generalErrorsChatId,
     jobs: () => config.telegram.jobsChatId,
+    cleanup: () => config.telegram.cleanupChatId,
 };
 
 // Telegram hard-caps a sendMessage payload at 4096 characters and rejects the
@@ -157,9 +159,74 @@ async function notifyGeneralError(context, err, opts = {}) {
     return send(text, "general");
 }
 
+/**
+ * Summary of one scheduled jobs-directory cleanup run.
+ *
+ * The cleanup channel is generic — other maintenance jobs will post here too —
+ * so every message leads with a "Cleanup — Jobs Directory" header that says
+ * which sweep it came from.
+ *
+ * Deliberately NOT throttled: this fires at most twice a day, and the deleted
+ * count is the only record of an irreversible operation. Collapsing two runs
+ * with an identical count into one message would hide a real deletion.
+ *
+ * @param {object} report
+ * @param {number} report.deletedCount   jobs hard-deleted this run
+ * @param {number} [report.clickEventsDeleted]
+ * @param {number} [report.totalChecked] apply links fetched
+ * @param {number} [report.expiryArchived] jobs archived by the validThrough sweep
+ * @param {number} [report.durationMs]
+ * @param {boolean} [report.dryRun]
+ * @param {Array<{slug?: string, title?: string, companyName?: string, reason?: string}>} [report.deletedJobs]
+ * @param {Error|string|null} [report.error] set when the run failed part-way
+ */
+async function notifyJobCleanup(report = {}) {
+    const {
+        deletedCount = 0,
+        clickEventsDeleted = 0,
+        totalChecked = 0,
+        expiryArchived = 0,
+        durationMs = 0,
+        dryRun = false,
+        deletedJobs = [],
+        error = null,
+    } = report;
+
+    const lines = [`🧹 <b>Cleanup — Jobs Directory</b>`, "Expired apply-link sweep"];
+    if (dryRun) lines.push("<i>DRY RUN — nothing was written or deleted</i>");
+    lines.push("");
+    lines.push(`<b>Deleted: ${deletedCount}</b> job(s)`);
+    lines.push(`Checked: ${totalChecked} apply link(s)`);
+    if (expiryArchived) lines.push(`Archived (past validThrough): ${expiryArchived}`);
+    if (clickEventsDeleted) lines.push(`Click events removed: ${clickEventsDeleted}`);
+    lines.push(`Took: ${Math.round(durationMs / 1000)}s`);
+
+    // The documents are gone, so this list is the only trace of what was in
+    // them. Cap it — `truncate` would otherwise cut mid-entry at 3900 chars.
+    if (deletedJobs.length) {
+        lines.push("", "<b>Removed:</b>");
+        for (const j of deletedJobs.slice(0, 25)) {
+            lines.push(
+                `• ${esc(j.companyName || "?")} — ${esc(j.title || "?")} <code>${esc(j.reason || "?")}</code>`
+            );
+        }
+        if (deletedJobs.length > 25) {
+            lines.push(`<i>…and ${deletedJobs.length - 25} more</i>`);
+        }
+    }
+
+    if (error) {
+        const message = error && error.message ? error.message : String(error);
+        lines.push("", `⚠️ <b>Run did not finish cleanly:</b> <code>${esc(message)}</code>`);
+    }
+
+    return send(lines.join("\n"), "cleanup");
+}
+
 module.exports = {
     send,
     notifyGeneralError,
+    notifyJobCleanup,
     esc,
     // exported for tests
     MAX_MESSAGE_LEN,

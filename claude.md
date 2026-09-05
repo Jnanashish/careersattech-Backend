@@ -134,7 +134,9 @@ status → `draft`; 404 if not archived),
 `DELETE /:id?permanent=true` (permanent — also drops the job's JobClickV2
 events and frees the slug)
 
-Apply-link cleanup (manual, on-demand — same verifier the cron uses):
+Apply-link cleanup (manual, on-demand — same verifier the cron uses, but the
+cron passes `deleteExpired: true` and these endpoints do not, so a manual scan
+archives for review where the cron destroys):
 - `POST /verify-now` — kick off a background scan of all published jobs;
   dead links auto-archive. Returns 202; only one scan runs at a time (409).
 - `GET /verify-now/status` — `{ running, startedAt, lastRun }`.
@@ -291,8 +293,15 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
 - `POST /:id/restore` un-archives to a *non-live* status (`draft` for jobs,
   `inactive` for companies) — never straight back to published. A job archived
   for a dead apply link must not silently go live again.
+- **The 12-hourly cron is the one automated hard-delete in the codebase.**
+  `runVerification({ deleteExpired: true })` (only `init()` passes it) removes
+  confirmed-expired jobs and their `JobClickV2` events from Mongo — no
+  `deletedAt`, no restore, nothing left to review. Every other caller of the
+  same function archives. Guard any change here: widening what the verifier
+  calls `expired` now widens what gets destroyed twice a day, unattended.
+  `VERIFY_JOBS_DRY_RUN=true` is the safe way to test a change against prod data.
 - **Two archive shapes exist.** The cron sweeps (`archiveExpiredJobs`, the link
-  verifier) set `status: "archived"` and leave `deletedAt` null;
+  verifier's non-delete path) set `status: "archived"` and leave `deletedAt` null;
   `POST /:id/archive` sets both. Anything that asks "is this archived?" must
   accept both — restore matches
   `$or: [{ deletedAt: { $ne: null } }, { status: "archived" }]`, and

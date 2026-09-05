@@ -1,10 +1,12 @@
 const cron = require("node-cron");
 const logger = require("../utils/logger");
 const JobV2 = require("../modules/jobsV2/jobsV2.model");
+const JobClickV2 = require("../modules/jobsV2/jobClickV2.model");
 const { verifyJob } = require("../services/jobVerifier");
 const emailReporter = require("../services/jobVerifier/emailReporter");
+const { notifyJobCleanup } = require("../utils/telegram");
 
-const DEFAULT_CRON = "0 21 * * 5"; // every Friday at 21:00 (9 PM)
+const DEFAULT_CRON = "0 */12 * * *"; // every 12 hours — 00:00 and 12:00
 const DEFAULT_CONCURRENCY = 5;
 const PER_DOMAIN_GAP_MS = 2_000;
 
@@ -124,6 +126,11 @@ function buildJobUpdate(job, result, now) {
  * @param {string|null} [opts.jobId]
  * @param {string|null} [opts.slug]
  * @param {boolean} [opts.skipEmail]
+ * @param {boolean} [opts.deleteExpired] hard-delete confirmed-expired jobs
+ *   instead of archiving them. IRREVERSIBLE — the documents and their click
+ *   events are removed. Opt-in, and only the 12-hourly cron opts in; the admin
+ *   panel's manual scan archives into the reviewable flagged queue instead.
+ *   Suppressed by dryRun like every other write.
  * @param {string} [opts.trigger]  "cron" | "manual"
  * @returns {Promise<object>} summary
  */
@@ -131,10 +138,11 @@ async function runVerification(opts = {}) {
     const startedAt = new Date();
     const dryRun = opts.dryRun ?? isDryRun();
     const skipEmail = !!opts.skipEmail;
+    const deleteExpired = !!opts.deleteExpired;
     const trigger = opts.trigger || "manual";
 
     logger.info(
-        `[verify] start trigger=${trigger} dryRun=${dryRun} limit=${opts.limit || "all"} jobId=${
+        `[verify] start trigger=${trigger} dryRun=${dryRun} deleteExpired=${deleteExpired} limit=${opts.limit || "all"} jobId=${
             opts.jobId || "-"
         } slug=${opts.slug || "-"}`
     );
@@ -158,6 +166,7 @@ async function runVerification(opts = {}) {
     const throttle = makeDomainThrottle();
 
     const archivedJobs = [];
+    const deletedJobs = [];
     const bulkOps = [];
     let activeCount = 0;
     let expiredCount = 0;
@@ -175,20 +184,25 @@ async function runVerification(opts = {}) {
                 );
 
                 const now = new Date();
-                bulkOps.push(buildJobUpdate(job, result, now));
 
                 if (result.result === "expired") {
                     expiredCount++;
-                    archivedJobs.push({
+                    const entry = {
                         _id: job._id,
                         slug: job.slug,
                         title: job.title,
                         companyName: job.companyName,
                         applyLink: job.applyLink,
                         reason: result.reason,
-                    });
+                    };
+                    archivedJobs.push(entry);
+                    // A document about to be removed needs no verification
+                    // stamp, so skip the write rather than update-then-delete.
+                    if (deleteExpired) deletedJobs.push(entry);
+                    else bulkOps.push(buildJobUpdate(job, result, now));
                 } else {
                     activeCount++;
+                    bulkOps.push(buildJobUpdate(job, result, now));
                 }
             })
         )
@@ -203,23 +217,61 @@ async function runVerification(opts = {}) {
         logger.info(`[verify] dry-run: would have written ${bulkOps.length} updates`);
     }
 
+    // Hard delete. Irreversible, so it is reached only when the caller opted in
+    // via `deleteExpired` AND the verifier returned "expired" — a definite
+    // signal (404/410, closed-posting phrase, or a collapse onto the careers
+    // homepage). Timeouts, 5xx, bot walls and empty bodies all classify as
+    // "active" upstream and can never land here.
+    let deletedCount = 0;
+    let clickEventsDeleted = 0;
+    if (deletedJobs.length > 0 && !dryRun) {
+        const ids = deletedJobs.map((j) => j._id);
+        const del = await JobV2.deleteMany({ _id: { $in: ids } });
+        deletedCount = del.deletedCount || 0;
+
+        // Click events are analytics-only; failing to clear them must not turn
+        // a completed delete into a failed run. Mirrors deleteFlaggedJobs.
+        try {
+            const clicks = await JobClickV2.deleteMany({ job: { $in: ids } });
+            clickEventsDeleted = clicks.deletedCount || 0;
+        } catch (clickErr) {
+            logger.error(
+                `[verify] failed to clear click events for deleted jobs: ${clickErr.message}`
+            );
+        }
+
+        logger.info(
+            `[verify] hard-deleted ${deletedCount} expired job(s), ${clickEventsDeleted} click event(s)`
+        );
+    } else if (deletedJobs.length > 0 && dryRun) {
+        logger.info(`[verify] dry-run: would have deleted ${deletedJobs.length} expired job(s)`);
+    }
+
     const completedAt = new Date();
     const durationMs = completedAt - startedAt;
 
     const summary = {
         trigger,
         dryRun,
+        deleteExpired,
         startedAt,
         completedAt,
         durationMs,
         totalChecked: jobs.length,
         activeCount,
         expiredCount,
+        // Every job classified expired this run, whatever was done with it.
+        // Named for the archive path that predates deletion; the email and the
+        // Telegram summary read `deleteExpired` to label it correctly.
         archivedJobs,
+        deletedJobs,
+        deletedCount,
+        clickEventsDeleted,
     };
 
     logger.info(
-        `[verify] Run complete. checked=${summary.totalChecked} active=${activeCount} archived=${expiredCount} duration=${durationMs}ms`
+        `[verify] Run complete. checked=${summary.totalChecked} active=${activeCount} expired=${expiredCount} ` +
+            `${deleteExpired ? `deleted=${deletedCount}` : `archived=${expiredCount}`} duration=${durationMs}ms`
     );
 
     if (!skipEmail) {
@@ -294,21 +346,49 @@ function init() {
     cron.schedule(
         schedule,
         async () => {
-            // Weekly maintenance (Fri 9 PM by default): archive time-expired
-            // jobs first so they drop out of the published set, then run the
-            // link verifier over what remains (skips re-checking expired jobs).
+            // Twice-daily maintenance. Two passes, in this order:
+            //
+            //   1. archiveExpiredJobs — pure date sweep. Jobs past their stated
+            //      validThrough become "archived", which drops them out of the
+            //      published set. They are NOT deleted, and because pass 2 only
+            //      looks at published jobs, they are not link-checked either.
+            //   2. runVerification — fetches each remaining published job's
+            //      apply link, oldest-checked first, and hard-deletes the ones
+            //      the verifier confirms dead.
+            //
+            // Neither pass throwing may skip the Telegram report: the deleted
+            // count is the only record of an irreversible operation.
+            let expiryArchived = 0;
+            let summary = null;
+            let failure = null;
+
             try {
                 const expiry = await archiveExpiredJobs();
+                expiryArchived = expiry.archived;
                 logger.info(`[verify] expiry sweep archived ${expiry.archived} job(s)`);
             } catch (err) {
                 logger.error(`[expire] cron sweep failed: ${err.stack || err.message}`);
+                failure = err;
             }
 
             try {
-                await runVerification({ trigger: "cron" });
+                summary = await runVerification({ trigger: "cron", deleteExpired: true });
             } catch (err) {
                 logger.error(`[verify] cron run failed: ${err.stack || err.message}`);
+                failure = err;
             }
+
+            // Fire-and-forget by contract — notifyJobCleanup never throws.
+            await notifyJobCleanup({
+                deletedCount: summary?.deletedCount ?? 0,
+                clickEventsDeleted: summary?.clickEventsDeleted ?? 0,
+                totalChecked: summary?.totalChecked ?? 0,
+                durationMs: summary?.durationMs ?? 0,
+                dryRun: summary?.dryRun ?? isDryRun(),
+                deletedJobs: summary?.deletedJobs ?? [],
+                expiryArchived,
+                error: failure,
+            });
         },
         { timezone }
     );

@@ -33,7 +33,7 @@ const allowedOrigins = (env.ALLOWED_ORIGINS || "")
     .map((s) => s.trim())
     .filter(Boolean);
 
-// One bot posts to all three channels; only the chat ID differs. Numeric
+// One bot posts to every channel; only the chat ID differs. Numeric
 // channel IDs are negative and start with -100. Read them with:
 //   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates"
 // after adding the bot as an admin and posting once in each channel.
@@ -47,6 +47,10 @@ const TELEGRAM_CHANNELS = Object.freeze({
     generalErrorsChatId: "-1004312539475",
     // The published-job list for each run.
     jobsChatId: "-1004417232066",
+    // Scheduled maintenance of the jobs directory — currently the 12-hourly
+    // expired-link sweep, which hard-deletes what it confirms dead. Generic
+    // channel, so every message carries a "Cleanup — Jobs Directory" header.
+    cleanupChatId: "-1004369332585",
 });
 
 const config = Object.freeze({

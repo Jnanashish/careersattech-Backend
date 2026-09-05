@@ -57,8 +57,16 @@ function formatDuration(ms) {
     return `${min}m ${s}s`;
 }
 
+// The cron hard-deletes what it confirms expired; the admin panel's manual scan
+// archives it for review. Same summary shape either way, so the wording keys off
+// `deleteExpired` rather than quietly calling a deletion an archive.
+function outcomeVerb(summary) {
+    return summary.deleteExpired ? "deleted" : "archived";
+}
+
 function buildHtml(summary, options) {
     const dryRun = !!options.dryRun;
+    const verb = outcomeVerb(summary);
     const archivedRows = summary.archivedJobs
         .map(
             (j) => `
@@ -91,10 +99,11 @@ function buildHtml(summary, options) {
   <table style="border-collapse: collapse; font-family: sans-serif; margin: 12px 0;">
     <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Total checked</td><td style="padding:6px 12px;border:1px solid #e5e7eb;"><b>${summary.totalChecked}</b></td></tr>
     <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Active (no change)</td><td style="padding:6px 12px;border:1px solid #e5e7eb;">${summary.activeCount}</td></tr>
-    <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Expired (auto-archived)</td><td style="padding:6px 12px;border:1px solid #e5e7eb;color:#b94a48;"><b>${summary.expiredCount}</b></td></tr>
+    <tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Expired (auto-${verb})</td><td style="padding:6px 12px;border:1px solid #e5e7eb;color:#b94a48;"><b>${summary.expiredCount}</b></td></tr>
+    ${summary.deleteExpired ? `<tr><td style="padding:6px 12px;border:1px solid #e5e7eb;">Removed from database</td><td style="padding:6px 12px;border:1px solid #e5e7eb;color:#b94a48;"><b>${summary.deletedCount ?? 0}</b> job(s), ${summary.clickEventsDeleted ?? 0} click event(s)</td></tr>` : ""}
   </table>
 
-  <h3 style="font-family:sans-serif;">Auto-archived jobs (${summary.expiredCount})</h3>
+  <h3 style="font-family:sans-serif;">Auto-${verb} jobs (${summary.expiredCount})</h3>
   ${archivedRows ? `<table style="border-collapse: collapse; font-family: sans-serif;">
     <thead><tr style="background:#f9fafb;">
       <th style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;">Slug</th>
@@ -112,6 +121,7 @@ function buildHtml(summary, options) {
 
 function buildText(summary, options) {
     const dryRun = !!options.dryRun;
+    const verb = outcomeVerb(summary);
     const lines = [];
     if (dryRun) lines.push("[DRY RUN] No database writes were performed.", "");
     lines.push(`Job verifier run — ${formatIst(summary.completedAt)}`);
@@ -123,9 +133,16 @@ function buildText(summary, options) {
     }
     lines.push(`Total checked:           ${summary.totalChecked}`);
     lines.push(`Active (no change):      ${summary.activeCount}`);
-    lines.push(`Expired (auto-archived): ${summary.expiredCount}`);
+    // 25 = width of the longest label above, so the numbers stay in one column.
+    lines.push(`${`Expired (auto-${verb}):`.padEnd(25)}${summary.expiredCount}`);
+    if (summary.deleteExpired) {
+        lines.push(
+            `${"Removed from database:".padEnd(25)}${summary.deletedCount ?? 0} job(s), ` +
+                `${summary.clickEventsDeleted ?? 0} click event(s)`
+        );
+    }
     lines.push("");
-    lines.push(`Auto-archived jobs (${summary.expiredCount}):`);
+    lines.push(`Auto-${verb} jobs (${summary.expiredCount}):`);
     if (!summary.archivedJobs.length) lines.push("  - none");
     for (const j of summary.archivedJobs) {
         lines.push(`  - [${j.slug}] ${j.companyName} — ${j.title}`);
@@ -139,7 +156,7 @@ function buildText(summary, options) {
 
 function buildSubject(summary, options) {
     const prefix = options.dryRun ? "[DRY RUN] " : "";
-    return `${prefix}[CareersAt.Tech] Job verifier run — ${summary.expiredCount} archived`;
+    return `${prefix}[CareersAt.Tech] Job verifier run — ${summary.expiredCount} ${outcomeVerb(summary)}`;
 }
 
 /**
@@ -188,5 +205,5 @@ async function sendSummary(summary, options = {}) {
 
 module.exports = {
     sendSummary,
-    _internals: { buildSubject, buildHtml, buildText, formatIst, formatDuration },
+    _internals: { buildSubject, buildHtml, buildText, formatIst, formatDuration, outcomeVerb },
 };
