@@ -64,6 +64,7 @@ exports.listJobsV2 = async (req, res) => {
             excludeArchived,
             employmentType,
             batch,
+            populate,
         } = req.validatedQuery || {};
         const pageNum = Math.max(parseInt(page) || 1, 1);
         const pageSize = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
@@ -94,8 +95,16 @@ exports.listJobsV2 = async (req, res) => {
         if (batch) conditions.batch = batch;
         if (search) conditions.$text = { $search: search };
 
+        // Banner/digest screens need the company logo to render; the plain admin
+        // list does not, and joining on every page load would bloat it for no
+        // gain. Hence opt-in rather than always-on.
+        let listQuery = JobV2.find(conditions).sort({ createdAt: -1 }).skip(skip).limit(pageSize);
+        if (populate === "company") {
+            listQuery = listQuery.populate("company", "companyName slug logo");
+        }
+
         const [jobs, total] = await Promise.all([
-            JobV2.find(conditions).sort({ createdAt: -1 }).skip(skip).limit(pageSize).lean(),
+            listQuery.lean(),
             JobV2.countDocuments(conditions),
         ]);
 

@@ -125,6 +125,9 @@ const listJobV2QuerySchema = z.object({
     // Coerced: the query string carries "2025" but batch is [Number], and a
     // string would silently match nothing.
     batch: z.coerce.number().int().min(2020).max(2030).optional(),
+    // Opt-in company join. Off by default so the admin job list keeps its lean
+    // payload; the banner/digest screens need company.logo and ask for it.
+    populate: z.enum(["company"]).optional(),
 });
 
 // ─── Apply-link verification / flagged-job cleanup ──────────────
