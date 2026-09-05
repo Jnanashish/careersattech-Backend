@@ -41,6 +41,9 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
     let totalPublished = 0;
     let totalBacklogPublished = 0;
     let totalErrors = 0;
+    // Role/company/applyLink for every job this run published — backlog drain
+    // included — so the jobs channel lists them all in one message.
+    const publishedJobs = [];
     const adaptersSucceeded = [];
     const adaptersFailed = [];
 
@@ -61,6 +64,7 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
             });
             totalBacklogPublished = backlog.published;
             totalPublished += backlog.published;
+            publishedJobs.push(...(backlog.jobs || []));
             if (backlog.scanned > 0) {
                 console.log(
                     `[Scheduler] Backlog drain: published ${backlog.published}/${backlog.scanned} ` +
@@ -158,6 +162,7 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
                     });
                     adapterLog.jobsPublished = pub.published;
                     totalPublished += pub.published;
+                    publishedJobs.push(...(pub.jobs || []));
                     console.log(
                         `[Scheduler] ${result.adapter}: auto-published ` +
                         `${pub.published}/${ingestResult.created.length} ` +
@@ -178,6 +183,15 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
             } else {
                 adapterLog.status = "failed";
                 adaptersFailed.push(result.adapter);
+
+                // Nothing transformed and nothing ingested: every job in the
+                // batch failed. Alert now rather than waiting for the
+                // consecutive-failure check five runs from now.
+                await notifier.sendAdapterAlert(
+                    result.adapter,
+                    adapterLog.errors[0]?.jobUrl || "unknown",
+                    adapterLog.errors[0]?.message || "All jobs failed to transform"
+                );
             }
 
             adapterResults.push(adapterLog);
@@ -224,6 +238,7 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
 
     // Send report
     await notifier.sendScrapeReport(scrapeLog);
+    await notifier.sendScrapedJobs(publishedJobs, { trigger, failed: totalErrors });
 
     return scrapeLog;
 }

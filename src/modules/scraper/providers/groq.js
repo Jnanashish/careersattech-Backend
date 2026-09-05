@@ -1,7 +1,7 @@
 const Groq = require("groq-sdk");
 const config = require("../../../config");
 
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const MODEL = config.ai.groqModel;
 
 // Round-robin across the configured Groq API keys so each request hits a
 // different account — spreads load instead of spiking one key's rate limit.
@@ -14,7 +14,9 @@ let rrCursor = 0;
 function getKeys() {
     const keys = config.ai.groqKeys;
     if (!keys || keys.length === 0) {
-        throw new Error("[Groq] No Groq API key set (GROQ_API_KEY_1 / GROQ_API_KEY_2)");
+        throw new Error(
+            "[Groq] No Groq API key set (GROQ_API_KEY_1 / GROQ_API_KEY_2 / GROQ_API_KEY)"
+        );
     }
     return keys;
 }

@@ -244,12 +244,15 @@ async function approveStagingJob(staging, overrides, approvedBy) {
  *
  * @param {import("mongoose").Document[]} stagingDocs freshly created StagingJob docs
  * @param {{ approvedBy?: string }} [opts]
- * @returns {Promise<{ published: number, failed: number }>}
+ * @returns {Promise<{ published: number, failed: number, jobs: { title: string, companyName: string, applyLink: string }[] }>}
  */
 async function autoPublishStaged(stagingDocs, opts = {}) {
     const approvedBy = opts.approvedBy || "auto-scraper";
     let published = 0;
     let failed = 0;
+    // Carried out to the jobs alert channel. Kept to the three fields that
+    // message needs so a big run doesn't hold whole documents in memory.
+    const jobs = [];
 
     for (const staging of stagingDocs) {
         const title = staging?.jobData?.title || "(untitled)";
@@ -263,6 +266,11 @@ async function autoPublishStaged(stagingDocs, opts = {}) {
                 continue;
             }
             published++;
+            jobs.push({
+                title: result.job.title,
+                companyName: result.job.companyName,
+                applyLink: result.job.applyLink,
+            });
             logger.info(`[AutoPublish] Published: ${title} (${result.job._id})`);
         } catch (err) {
             failed++;
@@ -272,7 +280,7 @@ async function autoPublishStaged(stagingDocs, opts = {}) {
         }
     }
 
-    return { published, failed };
+    return { published, failed, jobs };
 }
 
 /**
@@ -312,7 +320,7 @@ async function recordAutoPublishFailure(staging, reason) {
  * and a bare `$lt` would silently exclude exactly the backlog we came for.
  *
  * @param {{ limit?: number, source?: string, retryExhausted?: boolean, approvedBy?: string }} [opts]
- * @returns {Promise<{ scanned: number, published: number, failed: number }>}
+ * @returns {Promise<{ scanned: number, published: number, failed: number, jobs: { title: string, companyName: string, applyLink: string }[] }>}
  */
 async function publishPendingBacklog(opts = {}) {
     const parsedLimit = parseInt(opts.limit, 10);
@@ -328,13 +336,13 @@ async function publishPendingBacklog(opts = {}) {
     }
 
     const docs = await StagingJob.find(filter).sort({ scrapedAt: 1 }).limit(limit);
-    if (docs.length === 0) return { scanned: 0, published: 0, failed: 0 };
+    if (docs.length === 0) return { scanned: 0, published: 0, failed: 0, jobs: [] };
 
-    const { published, failed } = await autoPublishStaged(docs, {
+    const { published, failed, jobs } = await autoPublishStaged(docs, {
         approvedBy: opts.approvedBy || "auto-scraper:backlog",
     });
 
-    return { scanned: docs.length, published, failed };
+    return { scanned: docs.length, published, failed, jobs };
 }
 
 module.exports = {

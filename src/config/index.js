@@ -33,6 +33,22 @@ const allowedOrigins = (env.ALLOWED_ORIGINS || "")
     .map((s) => s.trim())
     .filter(Boolean);
 
+// One bot posts to all three channels; only the chat ID differs. Numeric
+// channel IDs are negative and start with -100. Read them with:
+//   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates"
+// after adding the bot as an admin and posting once in each channel.
+//
+// An empty value disables that channel: utils/telegram logs which one and skips
+// it, rather than burning retries on a chat ID Telegram will reject.
+const TELEGRAM_CHANNELS = Object.freeze({
+    // Anything the scrape pipeline failed at.
+    scraperErrorsChatId: "",
+    // Important backend errors only — 500s and process-level crashes.
+    generalErrorsChatId: "",
+    // The published-job list for each run.
+    jobsChatId: "",
+});
+
 const config = Object.freeze({
     server: Object.freeze({
         port: Number(env.PORT) || 5002,
@@ -72,16 +88,24 @@ const config = Object.freeze({
     ai: Object.freeze({
         provider: env.AI_PROVIDER || "groq",
         geminiKey: env.GEMINI_API_KEY,
-        // Round-robin pool: requests rotate across these two Groq keys so load
-        // spreads over both accounts instead of spiking one key's rate limit.
+        // Round-robin pool: requests rotate across these three Groq keys so
+        // load spreads over all three accounts instead of spiking one key's
+        // rate limit. Groq meters per organization, so three separate accounts
+        // give three separate TPM/TPD budgets. Deduped, so a key repeated
+        // across vars is only pooled once.
         groqKeys: Object.freeze([
             ...new Set(
-                [env.GROQ_API_KEY_1, env.GROQ_API_KEY_2]
+                [env.GROQ_API_KEY_1, env.GROQ_API_KEY_2, env.GROQ_API_KEY]
                     .map((k) => (typeof k === "string" ? k.trim() : ""))
                     .filter(Boolean)
             ),
         ]),
-        groqModel: env.GROQ_MODEL,
+        // Pinned in code, not env. llama-3.3-70b-versatile is still a
+        // Production model at Groq but is no longer callable on the free tier,
+        // so it 404s with "does not exist or you do not have access to it".
+        // gpt-oss-120b is the largest model the free tier can reach
+        // (131K context, 65K max output).
+        groqModel: "openai/gpt-oss-120b",
         claudeKey: env.CLAUDE_API_KEY,
         claudeModel: env.CLAUDE_MODEL,
         openrouterKey: env.OPENROUTER_API_KEY,
@@ -95,8 +119,12 @@ const config = Object.freeze({
         ),
     }),
     telegram: Object.freeze({
+        // The bot token is the only credential here and stays in env. The chat
+        // IDs are fixed properties of this deployment, not secrets — holding
+        // one grants nothing without the token plus admin rights on the
+        // channel — so they are pinned in code instead.
         botToken: env.TELEGRAM_BOT_TOKEN,
-        chatId: env.TELEGRAM_CHAT_ID,
+        ...TELEGRAM_CHANNELS,
     }),
     blog: Object.freeze({
         cloudinaryFolder: env.BLOG_CLOUDINARY_FOLDER || "blog",

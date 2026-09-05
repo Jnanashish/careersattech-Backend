@@ -1,8 +1,10 @@
 const escapeRegex = require("./escapeRegex");
 const logger = require("./logger");
+const { notifyGeneralError } = require("./telegram");
 
 function apiErrorHandler(err, res) {
     logger.error(`API Error: ${err && err.stack ? err.stack : err}`);
+    notifyGeneralError("v1 controller", err);
     return res.status(500).json({ error: "Internal server error" });
 }
 

@@ -267,7 +267,7 @@ async function scrapeOne(adapter, options = {}) {
                 sourceUrl: link,
                 companyPageUrl: companyUrl,
                 meta: { title, company, postedDate },
-                pageContent: pageContent.slice(0, 8000),
+                pageContent: pageContent.slice(0, 16000),
                 companyPageContent,
             });
         } catch (err) {

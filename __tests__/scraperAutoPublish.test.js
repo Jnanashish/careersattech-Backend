@@ -22,6 +22,7 @@ jest.mock("../src/modules/scraper/providers", () => ({
 
 jest.mock("../src/modules/scraper/notifier", () => ({
     sendScrapeReport: jest.fn(),
+    sendScrapedJobs: jest.fn(),
     sendAdapterAlert: jest.fn(),
     sendRepeatedFailureAlert: jest.fn(),
     sendCriticalAlert: jest.fn(),
@@ -221,7 +222,19 @@ describe("pending backlog drain", () => {
 
         const result = await publishPendingBacklog();
 
-        expect(result).toEqual({ scanned: 1, published: 1, failed: 0 });
+        expect(result).toEqual({
+            scanned: 1,
+            published: 1,
+            failed: 0,
+            // the drain carries published jobs out for the alert channel
+            jobs: [
+                {
+                    title: "Backend Engineer",
+                    companyName: "Acme Test Labs",
+                    applyLink: "https://acme.test/apply/legacy",
+                },
+            ],
+        });
     });
 
     it("does not drain when auto-publish is off", async () => {
@@ -250,7 +263,12 @@ describe("pending backlog drain", () => {
 
         // now skipped entirely — it waits for a human instead of burning a
         // retry on every run
-        expect(await publishPendingBacklog()).toEqual({ scanned: 0, published: 0, failed: 0 });
+        expect(await publishPendingBacklog()).toEqual({
+            scanned: 0,
+            published: 0,
+            failed: 0,
+            jobs: [],
+        });
         // ...unless the caller explicitly asks for exhausted rows
         expect((await publishPendingBacklog({ retryExhausted: true })).scanned).toBe(1);
     });

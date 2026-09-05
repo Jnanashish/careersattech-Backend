@@ -1,4 +1,5 @@
 const logger = require("../utils/logger");
+const { notifyGeneralError } = require("../utils/telegram");
 const { ZodError } = require("zod");
 
 // eslint-disable-next-line no-unused-vars
@@ -19,6 +20,9 @@ function errorHandler(err, req, res, next) {
         return res.status(err.status).json({ error: err.message || "Request failed" });
     }
     logger.error(`Unhandled error on ${req.method} ${req.originalUrl}: ${err && err.stack ? err.stack : err}`);
+    // Only 500s reach here — the branches above are expected client errors.
+    // Fire-and-forget: the alert must never delay or fail the response.
+    notifyGeneralError(`${req.method} ${req.originalUrl}`, err);
     return res.status(500).json({ error: "Internal server error" });
 }
 
