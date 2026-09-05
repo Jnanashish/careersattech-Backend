@@ -42,11 +42,11 @@ const allowedOrigins = (env.ALLOWED_ORIGINS || "")
 // it, rather than burning retries on a chat ID Telegram will reject.
 const TELEGRAM_CHANNELS = Object.freeze({
     // Anything the scrape pipeline failed at.
-    scraperErrorsChatId: "",
+    scraperErrorsChatId: "-1004451592561",
     // Important backend errors only — 500s and process-level crashes.
-    generalErrorsChatId: "",
+    generalErrorsChatId: "-1004312539475",
     // The published-job list for each run.
-    jobsChatId: "",
+    jobsChatId: "-1004417232066",
 });
 
 const config = Object.freeze({
