@@ -9,8 +9,8 @@ const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
 const notifier = require("../modules/scraper/notifier");
 const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
 
-// How many pending staging rows one run may sweep. Seven adapter crons a day →
-// up to 700 backlog rows cleared daily, without one run doing an unbounded scan.
+// How many pending staging rows one run may sweep. Eight adapter crons a day →
+// up to 800 backlog rows cleared daily, without one run doing an unbounded scan.
 const BACKLOG_DRAIN_LIMIT = 100;
 
 async function runPipeline(trigger = "manual", adapterList = undefined, opts = {}) {
@@ -274,11 +274,12 @@ async function checkConsecutiveFailures(failedAdapters) {
 }
 
 // Each source runs on its own daily cron, staggered 3 hours apart, so the
-// scraper-API keys and the AI provider never get hit by all seven sources at
+// scraper-API keys and the AI provider never get hit by all eight sources at
 // once. Times are IST (pinned via SCRAPER_TZ below), anchored at 12:00 and
-// wrapping through the night — seven slots at 3h span 21 hours, so the last
-// three land after midnight. Each cron runs the full pipeline for a single
-// adapter via runPipeline(trigger, [adapter]).
+// wrapping through the night. Eight slots at 3h is exactly 24 hours, so the
+// ring is now full: a ninth source has to either share a slot or shorten the
+// gap, and the gap is the throttle. Each cron runs the full pipeline for a
+// single adapter via runPipeline(trigger, [adapter]).
 //
 // The gap is the throttle: one adapter transforms at most ~10 jobs per run,
 // so widening 2h -> 3h is what keeps a day's LLM and scraper-API usage clear
@@ -295,6 +296,7 @@ const ADAPTER_SCHEDULES = [
     { name: "peerlist", cron: "0 0 * * *" },          // 00:00 IST
     { name: "engineerhub", cron: "0 3 * * *" },       // 03:00 IST
     { name: "talentd", cron: "0 6 * * *" },           // 06:00 IST
+    { name: "frontendgeek", cron: "0 9 * * *" },      // 09:00 IST
 ];
 
 function init() {

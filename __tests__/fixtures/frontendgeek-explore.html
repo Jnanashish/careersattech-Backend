@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  Synthetic minimal fixture for the FrontendGeek adapter test.
+  Mirrors https://frontendgeek.com/frontend-jobs/explore: the feed is ordered
+  newest-first and every card renders its href TWICE — once as the h3 title and
+  once as a "View job" button (861 anchors for 429 jobs on the live page).
+  Scoping the selector to h3 is what collapses that.
+
+  The /frontend-jobs/companies|locations|skills/ links below are the taxonomy
+  decoys that share the /frontend-jobs/ prefix but are not postings.
+-->
+<html>
+<head><title>Explore Curated Frontend Jobs — FrontendGeek (fixture)</title></head>
+<body>
+<header>
+  <a href="/frontend-jobs">Jobs</a>
+  <a href="https://x.com/i/communities/1952771007174873258" target="_blank" rel="noopener noreferrer">X</a>
+</header>
+
+<main>
+  <h2>Explore Curated Frontend Jobs</h2>
+
+  <section>
+    <h2>Featured Jobs</h2>
+    <!-- Unsold ad slots on the live page: no postings pinned above the feed. -->
+    <div><span>Feature your job here</span><a href="/frontend-jobs/post">Post a role now</a></div>
+  </section>
+
+  <nav aria-label="Browse">
+    <a href="/frontend-jobs/companies/google">Google</a>
+    <a href="/frontend-jobs/locations/bangalore">Jobs in Bangalore</a>
+    <a href="/frontend-jobs/skills/react">React</a>
+  </nav>
+
+  <ul>
+    <li>
+      <div class="min-w-0 flex-1">
+        <p class="uppercase">LinkedIn</p>
+        <time datetime="2026-08-30T19:35:27.638231+00:00">1 week ago</time>
+        <h3><a href="/frontend-jobs/view/senior-staff-software-engineer-ui-at-linkedin-8ba76477">Senior Staff Software Engineer - Ui At Linkedin</a></h3>
+      </div>
+      <a href="/frontend-jobs/view/senior-staff-software-engineer-ui-at-linkedin-8ba76477">View job</a>
+    </li>
+    <li>
+      <div class="min-w-0 flex-1">
+        <p class="uppercase">Cognizant</p>
+        <time datetime="2026-08-30T19:35:14.750011+00:00">1 week ago</time>
+        <h3><a href="/frontend-jobs/view/frontend-react-engineering-lead-at-cognizant-d106313c">Frontend (react) Engineering Lead At Cognizant</a></h3>
+      </div>
+      <a href="/frontend-jobs/view/frontend-react-engineering-lead-at-cognizant-d106313c">View job</a>
+    </li>
+    <li>
+      <div class="min-w-0 flex-1">
+        <p class="uppercase">Truemeds</p>
+        <time datetime="2026-08-30T19:34:49.584704+00:00">1 week ago</time>
+        <h3><a href="/frontend-jobs/view/frontend-sde-3-at-truemeds-c029049a">Frontend-Sde 3 At Truemeds</a></h3>
+      </div>
+      <a href="/frontend-jobs/view/frontend-sde-3-at-truemeds-c029049a">View job</a>
+    </li>
+    <li>
+      <div class="min-w-0 flex-1">
+        <p class="uppercase">Aerospike</p>
+        <time datetime="2026-08-27T04:32:28.889192+00:00">2 weeks ago</time>
+        <h3><a href="/frontend-jobs/view/senior-frontend-engineer-at-aerospike-abf4e202">Senior Frontend Engineer At Aerospike</a></h3>
+      </div>
+      <a href="/frontend-jobs/view/senior-frontend-engineer-at-aerospike-abf4e202">View job</a>
+    </li>
+  </ul>
+</main>
+</body>
+</html>

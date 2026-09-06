@@ -79,7 +79,7 @@ careersattech-Backend/
 │   ├── stopFlags.js                       # in-memory per-adapter stop signals
 │   ├── adapters/                          # freshershunt, freshersjobs, offcampusjobs4u,
 │   │                                      #   onlyfrontendjobs, peerlist, engineerhub,
-│   │                                      #   talentd (+ _template)
+│   │                                      #   talentd, frontendgeek (+ _template)
 │   ├── providers/                         # gemini, groq, claude, openrouter (selected by AI_PROVIDER)
 │   └── models/{StagingJob,ScrapeLog}.js   # staging queue + run logs
 ├── migration/
@@ -421,10 +421,10 @@ Both initialize after the server starts listening:
   `SCRAPER_TZ` (default Asia/Kolkata) so the scraper-API keys and the AI
   provider are never hit by every source at once: freshershunt 12:00,
   freshersjobs 15:00, offcampusjobs4u 18:00, onlyfrontendjobs 21:00,
-  peerlist 00:00, engineerhub 03:00, talentd 06:00 IST — seven slots at 3h
-  span 21 hours, so the last three land after midnight. The gap is the
-  throttle that keeps daily LLM/scraper-API usage under the per-key limits;
-  a new source extends the wrap rather than shrinking the gap. Each fires
+  peerlist 00:00, engineerhub 03:00, talentd 06:00, frontendgeek 09:00 IST.
+  Eight slots at 3h is exactly 24 hours, so the ring is full — a ninth source
+  must share a slot or shorten the gap, and the gap is the throttle that keeps
+  daily LLM/scraper-API usage under the per-key limits. Each fires
   `runPipeline("cron", [adapter])`; checks for 5 consecutive failures and
   alerts via Telegram.
 - `blog/blog.scheduler.js` — `* * * * *` (every minute) flips
