@@ -48,3 +48,20 @@ describe("transformer prompt variants", () => {
         expect(salary(JOB_ONLY_PROMPT)).toBe(salary(FULL_PROMPT));
     });
 });
+
+// The pipeline republishes other people's job posts. Every adapter's raw text
+// reaches the model through the same prompt, so the "write it yourself" rule
+// has to live outside the NEW/EXISTING_COMPANY markers — in a section both
+// variants keep — or a job whose company we already have would skip it.
+describe("transformer prompt — original-content rules", () => {
+    test.each([
+        ["FULL_PROMPT", FULL_PROMPT],
+        ["JOB_ONLY_PROMPT", JOB_ONLY_PROMPT],
+    ])("%s forbids verbatim reuse of the source text", (_name, prompt) => {
+        expect(prompt).toMatch(/source of TRUTH, not a source of TEXT/);
+        expect(prompt).toMatch(/Copying sentences or bullets verbatim from the source is not acceptable/);
+        expect(prompt).toMatch(/must be ORIGINAL PROSE that you wrote/);
+        // Rephrasing must not mangle the terms a job seeker searches on.
+        expect(prompt).toMatch(/Proper nouns are the exception and must stay exact/);
+    });
+});

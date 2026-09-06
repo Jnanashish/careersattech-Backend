@@ -9,8 +9,8 @@ const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
 const notifier = require("../modules/scraper/notifier");
 const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
 
-// How many pending staging rows one run may sweep. Five adapter crons a day →
-// up to 500 backlog rows cleared daily, without one run doing an unbounded scan.
+// How many pending staging rows one run may sweep. Six adapter crons a day →
+// up to 600 backlog rows cleared daily, without one run doing an unbounded scan.
 const BACKLOG_DRAIN_LIMIT = 100;
 
 async function runPipeline(trigger = "manual", adapterList = undefined, opts = {}) {
@@ -274,7 +274,7 @@ async function checkConsecutiveFailures(failedAdapters) {
 }
 
 // Each source runs on its own daily cron, staggered 2 hours apart, so the
-// scraper-API keys and the AI provider never get hit by all five sources at
+// scraper-API keys and the AI provider never get hit by all six sources at
 // once. Times are IST (pinned via SCRAPER_TZ below). Anchored on the original
 // 6 PM IST slot (onlyfrontendjobs). Each cron runs the full pipeline for a
 // single adapter via runPipeline(trigger, [adapter]).
@@ -286,6 +286,7 @@ const ADAPTER_SCHEDULES = [
     { name: "offcampusjobs4u", cron: "0 16 * * *" },  // 16:00 IST
     { name: "onlyfrontendjobs", cron: "0 18 * * *" }, // 18:00 IST (6 PM)
     { name: "peerlist", cron: "0 20 * * *" },         // 20:00 IST
+    { name: "engineerhub", cron: "0 22 * * *" },      // 22:00 IST
 ];
 
 function init() {
@@ -319,4 +320,4 @@ function init() {
     console.log("[Scheduler] Cron scheduled successfully");
 }
 
-module.exports = { init, runPipeline, ADAPTER_SCHEDULES };
+module.exports = { init, runPipeline, ADAPTER_SCHEDULES, SCRAPER_TZ };

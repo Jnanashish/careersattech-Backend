@@ -12,9 +12,12 @@ NOTE: This company already exists in our database — its canonical name is prov
 READING THE INPUT:
 - `pageContent` starts with aggregator metadata (title, company, location, tech stack).
 - When it also contains a block headed "OFFICIAL JOB POSTING", that block is the
-  company's own posting fetched from the apply URL. It is the AUTHORITATIVE source
+  company's own posting for this role. It is the AUTHORITATIVE source
   for jobDescription, responsibilities, eligibility, skills, salary and dates —
   prefer it over the metadata whenever the two disagree.
+  Authoritative means it is the source of TRUTH, not a source of TEXT: take the
+  facts from it and write them again in your own words. Never paste its
+  sentences into your output.
 - The official posting is machine-extracted, so it may still carry site navigation,
   cookie notices, language switchers, "apply now" chrome or unrelated job links.
   Ignore that noise; use only the parts describing this role and this company.
@@ -44,7 +47,7 @@ OUTPUT JSON SHAPE — return exactly this top-level structure:
   "employmentType": "array of strings (required) — choose one or more from: ['FULL_TIME','PART_TIME','CONTRACTOR','INTERN','TEMPORARY']. Internships → ['INTERN']. Full-time roles → ['FULL_TIME']. Contractual → ['CONTRACTOR'].",
   "batch": "array of integers (required) — eligible graduation years between 2020 and 2030. For 'freshers' or '0-1 years' use the current year and the previous 2 years. Example: [2024, 2025, 2026]. Must be unique.",
   "jobDescription": {
-    "html": "string (required when displayMode is 'internal') — full SEO-friendly HTML job description. Include sections wrapped in <h3>About the role</h3><p>...</p> - About the role should be of 30 - 80 words with all the basic detail, <h3>Responsibilities</h3><ul><li>...</li></ul>, <h3>Eligibility</h3><ul><li>...</li></ul>, <h3>Skills</h3><ul><li>...</li></ul>, <h3>Benefits</h3><ul><li>...</li></ul>. Max 6 bullets per section. Combine shorter related points. Target 400-800 words total when the source supports it — never pad with invented content, and never drop real detail from the official posting just to stay short. Fresher-friendly tone. And if possible try to populate all the section from the given data",
+    "html": "string (required when displayMode is 'internal') — full SEO-friendly HTML job description. Include sections wrapped in <h3>About the role</h3><p>...</p> - About the role should be of 30 - 80 words with all the basic detail, <h3>Responsibilities</h3><ul><li>...</li></ul>, <h3>Eligibility</h3><ul><li>...</li></ul>, <h3>Skills</h3><ul><li>...</li></ul>, <h3>Benefits</h3><ul><li>...</li></ul>. Max 6 bullets per section. Combine shorter related points. Target 400-800 words total when the source supports it — never pad with invented content, and never drop real detail from the official posting just to stay short. Fresher-friendly tone. And if possible try to populate all the section from the given data. WRITE THIS SECTION YOURSELF: rephrase every responsibility, requirement and benefit in your own words — change the sentence structure and vocabulary while keeping the facts identical. Copying sentences or bullets verbatim from the source is not acceptable output.",
   },
   "category": "string — one of: ['engineering','design','product','data','devops','qa','management','other']. Infer from title and skills.",
   "workMode": "string — one of: ['onsite','hybrid','remote']. Default 'onsite' if unclear.",
@@ -123,5 +126,9 @@ RULES:
 - requiredSkills, preferredSkills, topicTags<<NEW_COMPANY>>, tags, techStack, locations<</NEW_COMPANY>> are arrays of strings (lowercase where indicated).
 - If a field cannot be determined and is optional, set to null (or [] for arrays). If required, infer the closest sensible value.
 - applyLink MUST be the company's direct apply URL — NEVER the aggregator URL.
+- jobDescription.html must be ORIGINAL PROSE that you wrote. Reuse the source's
+  facts, never its sentences — no clause of the source may survive verbatim.
+  Proper nouns are the exception and must stay exact: company and product names,
+  technologies, tools, degree names, certifications and skill terms.
 - Do NOT invent skills, eligibility, or responsibilities not implied by the source content. <<NEW_COMPANY>>The company description and salary estimate are the only fields you may enrich.<</NEW_COMPANY>><<EXISTING_COMPANY>>The salary estimate is the only field you may enrich.<</EXISTING_COMPANY>>
 - Output must be strictly valid JSON parseable by JSON.parse.

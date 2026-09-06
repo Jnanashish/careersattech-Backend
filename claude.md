@@ -77,7 +77,8 @@ careersattech-Backend/
 │   ├── ingester.js                        # dedupe (fingerprint) + write to StagingJob
 │   ├── notifier.js                        # Telegram alerts
 │   ├── stopFlags.js                       # in-memory per-adapter stop signals
-│   ├── adapters/                          # freshershunt, offcampusjobs4u, onlyfrontendjobs (+ _template)
+│   ├── adapters/                          # freshershunt, freshersjobs, offcampusjobs4u,
+│   │                                      #   onlyfrontendjobs, peerlist, engineerhub (+ _template)
 │   ├── providers/                         # gemini, groq, claude, openrouter (selected by AI_PROVIDER)
 │   └── models/{StagingJob,ScrapeLog}.js   # staging queue + run logs
 ├── migration/
@@ -190,7 +191,9 @@ archived ones included)
 - `POST /staging/publish-pending` — drain the pending backlog now (same routine
   every run does first). Body `{ limit? (1–500, default 100), source?,
   retryExhausted? }` → `{ scanned, published, failed }`.
-- `GET /logs`, `GET /health`
+- `GET /logs`, `GET /health` — one card per adapter file (disabled ones
+  included), each with its cron slot in `schedule` (null = manual-run only);
+  the response's `scheduleTimezone` says which timezone those crons are in.
 - `POST /test-adapter/:name` — dry-run an adapter (no save)
 - `POST /stop/:adapterName` — request adapter stop (cooperative)
 
@@ -413,8 +416,12 @@ Config file (gitignored): `.env`. See `.env.example` for template values.
 
 ## Schedulers
 Both initialize after the server starts listening:
-- `scraper/scheduler.js` — `30 12 * * *` (6 PM IST) runs the full scrape
-  pipeline; checks for 5 consecutive failures and alerts via Telegram.
+- `jobs/scraper.scheduler.js` — one cron per adapter, staggered 2h apart in
+  `SCRAPER_TZ` (default Asia/Kolkata) so the scraper-API keys and the AI
+  provider are never hit by every source at once: freshershunt 12:00,
+  freshersjobs 14:00, offcampusjobs4u 16:00, onlyfrontendjobs 18:00,
+  peerlist 20:00, engineerhub 22:00 IST. Each fires `runPipeline("cron",
+  [adapter])`; checks for 5 consecutive failures and alerts via Telegram.
 - `blog/blog.scheduler.js` — `* * * * *` (every minute) flips
   `scheduled → published` when `scheduledFor <= now` and triggers Next.js
   revalidation.

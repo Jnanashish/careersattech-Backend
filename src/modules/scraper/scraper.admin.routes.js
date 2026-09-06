@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const StagingJob = require("./models/stagingJob.model");
 const ScrapeLog = require("./models/scrapeLog.model");
-const { runPipeline } = require("../../jobs/scraper.scheduler");
+const { runPipeline, ADAPTER_SCHEDULES, SCRAPER_TZ } = require("../../jobs/scraper.scheduler");
 const { scrapeOne, getAdapterByName, listAllAdapters } = require("./scraper.fetch");
 const {
     approveStagingJob,
@@ -325,11 +325,14 @@ router.get("/admin/scrape/logs", async (req, res, next) => {
 // Enumerates every adapter file (including disabled ones such as peerlist
 // that run on their own cron) and returns the latest log entry per adapter.
 // Adapters that have never run yet appear with status "idle" so the admin
-// UI always renders one card per known adapter.
+// UI always renders one card per known adapter. Each card also carries the
+// adapter's cron slot (null when no schedule is wired up), so the panel can
+// show when a source next runs, not only when it last did.
 router.get("/admin/scrape/health", async (req, res, next) => {
     try {
         const knownAdapters = listAllAdapters();
         const latestLog = await ScrapeLog.findOne({}).sort({ startedAt: -1 });
+        const scheduleByAdapter = new Map(ADAPTER_SCHEDULES.map((s) => [s.name, s.cron]));
 
         const health = await Promise.all(
             knownAdapters.map(async (a) => {
@@ -338,6 +341,7 @@ router.get("/admin/scrape/health", async (req, res, next) => {
                     displayName: a.displayName || a.name,
                     enabled: a.enabled !== false,
                     manualOnly: a.enabled === false,
+                    schedule: scheduleByAdapter.get(a.name) || null,
                 };
                 const lastForAdapter = await ScrapeLog.findOne({ "adapters.name": a.name })
                     .sort({ startedAt: -1 })
@@ -365,6 +369,8 @@ router.get("/admin/scrape/health", async (req, res, next) => {
         res.json({
             data: health,
             lastRunId: latestLog ? latestLog.runId : null,
+            // Every `schedule` above is a cron expression in this timezone.
+            scheduleTimezone: SCRAPER_TZ,
             activeStopRequests: getStopFlags(),
         });
     } catch (err) {

@@ -182,9 +182,18 @@ function normalizeJob(job, rawJob) {
         out.validThrough = null;
     }
 
-    out.externalJobId = typeof out.externalJobId === "string" && out.externalJobId.trim()
-        ? out.externalJobId.trim()
-        : null;
+    // An adapter reading a structured API knows the source's own stable id and
+    // passes it on rawJob.externalJobId. Prefer it over whatever the LLM read
+    // off the body — this is the field the ingester's first dedupe layer
+    // matches on, so a guessed value there is worse than no value.
+    const adapterJobId = typeof rawJob.externalJobId === "string" ? rawJob.externalJobId.trim() : "";
+    if (adapterJobId) {
+        out.externalJobId = adapterJobId;
+    } else {
+        out.externalJobId = typeof out.externalJobId === "string" && out.externalJobId.trim()
+            ? out.externalJobId.trim()
+            : null;
+    }
 
     return out;
 }
