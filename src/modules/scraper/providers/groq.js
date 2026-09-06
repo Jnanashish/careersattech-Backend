@@ -44,6 +44,20 @@ module.exports = {
                     { role: "user", content: userMessage },
                 ],
                 temperature: 0.3,
+                // Groq meters tokens-per-minute across the whole organization,
+                // and the free tier gives this model 8000 — small enough that a
+                // single oversized prompt exceeds the entire minute's budget and
+                // 413s before a token is generated. Left unbounded, a run's
+                // spend against that budget is also unknowable in advance,
+                // because the model's default output ceiling is 65K.
+                //
+                // Capping it makes each call's worst case a fixed number. The
+                // transformer's JSON — a 400-800 word HTML description plus a
+                // 240-340 word company overview — lands near 2200 tokens, so
+                // 4000 is roughly 2x headroom: high enough that a long posting
+                // is not truncated into invalid JSON, low enough to stay well
+                // inside the cap alongside the prompt.
+                max_tokens: 4000,
             });
             return response.choices[0].message.content;
         } catch (err) {

@@ -90,14 +90,32 @@ describe("frontendgeek adapter — selectors against the page markup", () => {
         expect(naive).not.toBe(APPLY_URL);
     });
 
-    test("meta.title reads the h1 and company is deliberately unset", () => {
+    test("meta.title reads the h1", () => {
         expect($detail(adapter.selectors.meta.title).first().text()).toContain(
             "Senior Staff Software Engineer"
         );
+    });
+
+    test("meta.company reads the posting header, not the site nav or footer", () => {
+        expect($detail(adapter.selectors.meta.company).first().text().trim()).toBe("LinkedIn");
+        // The :has(h1) anchor is what excludes the site chrome <header>, which
+        // comes first in document order and would otherwise win .first().
+        expect($detail("header").length).toBeGreaterThan(1);
         // The only /companies/ anchors here are the footer's static nav, which
         // would label every job "Google".
-        expect(adapter.selectors.meta.company).toBeNull();
         expect($detail('a[href^="/frontend-jobs/companies/"]').first().text()).toBe("Google");
+    });
+
+    test("content.selector resolves to the posting, not the tools mega-menu", () => {
+        const { selector } = adapter.selectors.content;
+        // The class is shared with the mega-menu and with nested ancestors, so
+        // a bare .first() would be wrong — extractPageContent narrows by anchor.
+        expect($detail(selector).length).toBeGreaterThan(1);
+        const withTitle = $detail(selector).filter(
+            (_, el) => $detail(el).find(adapter.selectors.meta.title).length > 0
+        );
+        expect(withTitle.length).toBeGreaterThan(0);
+        expect(withTitle.first().text()).toContain("shared UI infrastructure");
     });
 });
 
@@ -119,11 +137,52 @@ describe("frontendgeek adapter — full scrapeOne flow", () => {
         );
         expect(job.companyPageUrl).toBe(APPLY_URL);
         expect(job.meta.title).toContain("Senior Staff Software Engineer");
-        expect(job.meta.company).toBeNull();
+        expect(job.meta.company).toBe("LinkedIn");
         expect(job.pageContent).toContain("Responsibilities");
         expect(job.pageContent).toContain("shared UI infrastructure");
-        // LinkedIn refused the fetch; the job still comes through.
+        // LinkedIn is login-walled, so the company page is never fetched.
         expect(job.companyPageContent).toBeNull();
+    }, 25000);
+
+    test("pageContent carries the posting without the menus, ads or rival jobs", async () => {
+        routeByUrl();
+
+        const { jobs } = await scrapeOne(adapter);
+        const { pageContent } = jobs[0];
+
+        // The posting survives, title and employer included.
+        expect(pageContent).toContain("Senior Staff Software Engineer");
+        expect(pageContent).toContain("LinkedIn");
+        expect(pageContent).toContain("shared UI infrastructure");
+
+        // The tools mega-menu shares the wrapper class and is dropped anyway.
+        expect(pageContent).not.toContain("YouTube to MP3 Converter");
+        expect(pageContent).not.toContain("Browse by type");
+        // Footer directory backlinks.
+        expect(pageContent).not.toContain("Topmate");
+        // The related-jobs rail — the reason `remove` exists. These are other
+        // employers' descriptions sitting inside the posting wrapper, and the
+        // transformer would happily read a company name off one of them.
+        expect(pageContent).not.toContain("Barclays");
+        expect(pageContent).not.toContain("Appzen");
+        // Its now-empty "More related jobs" heading survives — a dozen harmless
+        // characters, not worth a second selector that couples to the layout.
+        expect(pageContent).not.toContain("Software Engineer-Ui");
+        expect(pageContent).not.toContain("Senior Frontend Developer");
+
+        // Whole-page strip is what used to blow the LLM token budget.
+        const wholePage = cheerio.load(DETAIL_HTML)("body").text().replace(/\s+/g, " ").trim();
+        expect(pageContent.length).toBeLessThan(wholePage.length / 2);
+    }, 25000);
+
+    test("the company page fetch is skipped for the login-walled apply host", async () => {
+        routeByUrl();
+
+        await scrapeOne(adapter);
+
+        const fetched = axios.get.mock.calls.map(([url]) => targetOf(url));
+        expect(fetched).not.toContain(APPLY_URL);
+        expect(fetched.some((u) => u.includes("linkedin.com"))).toBe(false);
     }, 25000);
 
     test("caps at the limit when the feed carries more than six postings", async () => {

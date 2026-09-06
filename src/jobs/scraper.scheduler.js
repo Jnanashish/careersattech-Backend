@@ -236,9 +236,11 @@ async function runPipeline(trigger = "manual", adapterList = undefined, opts = {
     // Check consecutive failures
     await checkConsecutiveFailures(adaptersFailed);
 
-    // Send report
+    // Send report. sendScrapeReport is now error-only — a clean run's summary
+    // travels with the job list into the jobs channel, so the scraper channel
+    // stays an alert feed. Pass the log so sendScrapedJobs can decide.
     await notifier.sendScrapeReport(scrapeLog);
-    await notifier.sendScrapedJobs(publishedJobs, { trigger, failed: totalErrors });
+    await notifier.sendScrapedJobs(publishedJobs, { trigger, failed: totalErrors, scrapeLog });
 
     return scrapeLog;
 }

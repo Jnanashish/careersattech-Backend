@@ -23,10 +23,92 @@ function resolveUrl(base, href) {
     }
 }
 
+// Tags that never carry job content, whatever the site. Dropped on both the
+// whole-page and the scoped extraction path.
+const NON_CONTENT_TAGS = "script, style, iframe, noscript";
+
+// Hard cap on what any one page may contribute to the transformer prompt.
+const MAX_PAGE_CONTENT = 16000;
+
+// Whole-page fallback: everything but the site chrome. Used for company pages,
+// and for job pages on adapters that declare no `selectors.content`.
 function stripHtml(html) {
     const $ = cheerio.load(html);
-    $("script, style, nav, header, footer, iframe, noscript").remove();
+    $(`${NON_CONTENT_TAGS}, nav, header, footer`).remove();
     return $("body").text().replace(/\s+/g, " ").trim();
+}
+
+// Scoped extraction. Some boards wrap a ~500 character posting in a page of
+// mega-menus, ad slots and a "related jobs" rail — 10-30KB of text, most of it
+// other companies' job descriptions. Sending that costs tokens the LLM budget
+// does not have and hands the model competitor names sitting right next to the
+// real one. An adapter narrows the read with:
+//
+//   selectors.content = {
+//       selector: "div.job-body",   // wrapper holding the posting
+//       remove: ["article"],        // sub-trees to drop first (related rails)
+//       anchor: "h1",               // optional; defaults to selectors.meta.title
+//   }
+//
+// Adapters without a `content` block keep the old whole-page behaviour.
+function extractPageContent(html, adapter) {
+    const content = adapter.selectors.content;
+    if (!content || !content.selector) return stripHtml(html);
+
+    const $ = cheerio.load(html);
+    // Deliberately NOT stripping nav/header/footer here: the selector already
+    // excludes page chrome, and a posting's own title block is often a
+    // <header>, so removing the tag would delete the job title.
+    $(NON_CONTENT_TAGS).remove();
+    for (const sel of content.remove || []) {
+        $(sel).remove();
+    }
+
+    // A utility-class selector ("div.min-w-0.flex-1") matches nested ancestors
+    // and unrelated blocks alike. Keep only the matches that actually carry the
+    // job title, then take the largest of those — the outermost wrapper around
+    // the posting.
+    let matches = $(content.selector);
+    const anchor = content.anchor || adapter.selectors.meta.title;
+    if (anchor) {
+        const withAnchor = matches.filter((_, el) => $(el).find(anchor).length > 0);
+        if (withAnchor.length > 0) matches = withAnchor;
+    }
+
+    let best = "";
+    matches.each((_, el) => {
+        const text = $(el).text().replace(/\s+/g, " ").trim();
+        if (text.length > best.length) best = text;
+    });
+
+    if (!best) {
+        // The site changed shape under us. Fall back to the whole page rather
+        // than hand the transformer a blank one: a bloated prompt may still
+        // transform, an empty one certainly will not.
+        logger.warn(
+            `[Scraper] ${adapter.displayName}: content selector "${content.selector}" matched nothing; falling back to whole-page strip`
+        );
+        return stripHtml(html);
+    }
+
+    return best;
+}
+
+// Hosts that answer a server-side fetch with a sign-in wall rather than the
+// posting. The body that comes back is ~5KB of "Sign in / Join now" chrome
+// followed by a "people also viewed" rail of other companies' jobs — pure cost
+// to the token budget and an active mislabelling risk for the employer name.
+// Only the body fetch is skipped; the URL still travels on companyPageUrl,
+// because it is the apply link.
+const LOGIN_WALLED_HOSTS = ["linkedin.com", "glassdoor.com", "indeed.com"];
+
+function isLoginWalledHost(url) {
+    try {
+        const host = new URL(url).hostname.toLowerCase();
+        return LOGIN_WALLED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+    } catch {
+        return false;
+    }
 }
 
 // ScraperAPI key rotation: round-robin across keys so concurrent fetches
@@ -244,12 +326,17 @@ async function scrapeOne(adapter, options = {}) {
 
             companyUrl = resolveUrl(link, companyUrl);
 
-            // Get full page content for AI processing
-            const pageContent = stripHtml(pageHtml);
+            // Get the job content for AI processing — scoped to the posting
+            // when the adapter declares selectors.content, whole page otherwise.
+            const pageContent = extractPageContent(pageHtml, adapter);
 
             // Step 3: Fetch company career page content if URL found
             let companyPageContent = null;
-            if (companyUrl) {
+            if (companyUrl && isLoginWalledHost(companyUrl)) {
+                logger.info(
+                    `[Scraper] ${adapter.displayName}: skipping company page fetch for ${companyUrl} — login-walled host returns sign-in chrome, not job content`
+                );
+            } else if (companyUrl) {
                 try {
                     await delay(adapter.options.delayMs);
                     const companyHtml = await fetchPage(companyUrl, adapter.options.headers);
@@ -267,7 +354,7 @@ async function scrapeOne(adapter, options = {}) {
                 sourceUrl: link,
                 companyPageUrl: companyUrl,
                 meta: { title, company, postedDate },
-                pageContent: pageContent.slice(0, 16000),
+                pageContent: pageContent.slice(0, MAX_PAGE_CONTENT),
                 companyPageContent,
             });
         } catch (err) {

@@ -20,32 +20,19 @@ function jobLine(job, index) {
 }
 
 /**
- * The run's published jobs, with role, company and apply URL for each.
- *
- * @param {{ title: string, companyName: string, applyLink: string }[]} jobs
- * @param {{ trigger?: string, failed?: number }} [meta]
+ * Did this run break anything? Decides which channel the run summary goes to:
+ * a clean run is news for the jobs channel, a broken one is an alert.
  */
-async function sendScrapedJobs(jobs, meta = {}) {
-    // A run that published nothing is normal (everything was a duplicate), and
-    // a daily "0 jobs" post trains you to ignore the channel. Stay quiet.
-    if (!Array.isArray(jobs) || jobs.length === 0) return;
-
-    const listed = jobs.slice(0, MAX_LISTED_JOBS).map(jobLine).join("\n");
-    const overflow =
-        jobs.length > MAX_LISTED_JOBS
-            ? `\n\n<i>…and ${jobs.length - MAX_LISTED_JOBS} more</i>`
-            : "";
-    const failedNote = meta.failed ? `\n<i>${meta.failed} left in staging</i>` : "";
-
-    const text =
-        `<b>📋 Scraped Jobs: ${jobs.length} published</b>` +
-        (meta.trigger ? `\nTrigger: ${esc(meta.trigger)}` : "") +
-        `${failedNote}\n\n${listed}${overflow}`;
-
-    await send(text, "jobs");
+function runHadErrors(scrapeLog) {
+    const s = (scrapeLog && scrapeLog.summary) || {};
+    return (s.totalErrors || 0) > 0 || (s.adaptersFailed?.length || 0) > 0;
 }
 
-async function sendScrapeReport(scrapeLog) {
+/**
+ * Per-adapter breakdown plus run totals. Shared verbatim by both channels so a
+ * failure alert and a success post describe the run the same way.
+ */
+function buildRunSummary(scrapeLog) {
     const s = scrapeLog.summary;
     const adapterLines = scrapeLog.adapters
         .map((a) => {
@@ -63,16 +50,70 @@ async function sendScrapeReport(scrapeLog) {
 
     const backlogNote = s.totalBacklogPublished ? ` (${s.totalBacklogPublished} from backlog)` : "";
     const publishedTotal = s.totalPublished ? ` | ${s.totalPublished} published${backlogNote}` : "";
-    const text =
-        `<b>🔍 Scrape Run Complete</b>\n` +
+
+    return (
         `Trigger: ${esc(scrapeLog.trigger)}\n` +
         `AI: ${esc(scrapeLog.aiProvider)}\n\n` +
         `${adapterLines}\n\n` +
-        `<b>Total:</b> ${s.totalNew} new${publishedTotal} | ${s.totalSkipped} skipped | ${s.totalErrors} errors`;
+        `<b>Total:</b> ${s.totalNew} new${publishedTotal} | ${s.totalSkipped} skipped | ${s.totalErrors} errors`
+    );
+}
 
-    // The run summary is a scrape-health message, not a job listing — the jobs
-    // channel gets sendScrapedJobs instead.
-    await send(text, "scraper");
+/**
+ * The run's published jobs, with role, company and apply URL for each.
+ *
+ * A clean run's summary rides along in this same message: a successful run is
+ * jobs-channel news, not a scraper alert, and posting it twice for one event
+ * is noise. When the run had errors the summary went to the scraper channel
+ * instead (see sendScrapeReport), so it is left out here.
+ *
+ * @param {{ title: string, companyName: string, applyLink: string }[]} jobs
+ * @param {{ trigger?: string, failed?: number, scrapeLog?: object }} [meta]
+ */
+async function sendScrapedJobs(jobs, meta = {}) {
+    // A run that published nothing is normal (everything was a duplicate), and
+    // a daily "0 jobs" post trains you to ignore the channel. Stay quiet.
+    if (!Array.isArray(jobs) || jobs.length === 0) return;
+
+    const listed = jobs.slice(0, MAX_LISTED_JOBS).map(jobLine).join("\n");
+    const overflow =
+        jobs.length > MAX_LISTED_JOBS
+            ? `\n\n<i>…and ${jobs.length - MAX_LISTED_JOBS} more</i>`
+            : "";
+    const failedNote = meta.failed ? `\n<i>${meta.failed} left in staging</i>` : "";
+
+    const summary =
+        meta.scrapeLog && !runHadErrors(meta.scrapeLog)
+            ? `\n\n${buildRunSummary(meta.scrapeLog)}`
+            : "";
+    // The summary already opens with a Trigger line; don't print it twice.
+    const triggerNote = summary || !meta.trigger ? "" : `\nTrigger: ${esc(meta.trigger)}`;
+
+    const text =
+        `<b>📋 Scraped Jobs: ${jobs.length} published</b>` +
+        `${triggerNote}${failedNote}${summary}\n\n${listed}${overflow}`;
+
+    await send(text, "jobs");
+}
+
+/**
+ * Run-health alert for the scraper channel.
+ *
+ * Only a run that actually broke something posts here. A clean run used to
+ * report to this channel every day, which trained everyone to scroll past the
+ * one place a real failure shows up — its summary now rides with the job list
+ * in the jobs channel instead (sendScrapedJobs).
+ *
+ * @returns {Promise<boolean>} false when the run was clean and nothing was sent
+ */
+async function sendScrapeReport(scrapeLog) {
+    if (!runHadErrors(scrapeLog)) return false;
+
+    const text =
+        `<b>⚠️ Scrape Run Completed With Errors</b>\n` +
+        `${buildRunSummary(scrapeLog)}`;
+
+    return send(text, "scraper");
 }
 
 async function sendAdapterAlert(adapterName, baseUrl, error) {

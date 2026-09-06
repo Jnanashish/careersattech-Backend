@@ -49,6 +49,23 @@ module.exports = {
             company: "TODO_SELECTOR",
             postedDate: null,
         },
+        // OPTIONAL. Omit it and the whole page (minus nav/header/footer) is sent
+        // to the LLM. Add it when the posting is a small island in a big page —
+        // mega-menus, ad slots, "related jobs" rails. That padding is not just
+        // expensive, it is wrong: related-job cards carry other employers'
+        // descriptions, and the model can pick the wrong company off them.
+        //
+        //   selector: wrapper holding the posting. If it matches several nodes
+        //             (nested ancestors, repeated utility classes), the ones
+        //             containing `anchor` win, then the largest of those.
+        //   remove:   sub-trees dropped before reading text. Nodes *inside* the
+        //             wrapper that are not part of the posting go here.
+        //   anchor:   defaults to selectors.meta.title.
+        //
+        // content: {
+        //     selector: "div.job-body",
+        //     remove: ["article", ".related-jobs"],
+        // },
     },
 
     options: {

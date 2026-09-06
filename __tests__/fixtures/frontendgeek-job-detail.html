@@ -1,11 +1,21 @@
 <!doctype html>
 <!--
   Synthetic minimal fixture for a FrontendGeek job detail page.
-  Ordering is the point: the site's own social links and its footer of
-  directory backlinks are ALL target="_blank" rel="noopener noreferrer" and all
-  sit around the apply button. On the live page a generic
-  "first outbound anchor" fallback returns the X community link, which is why
-  the adapter's fallback matches the LinkedIn job URL instead.
+
+  Two things about the live markup are load-bearing and reproduced here:
+
+  1. Link ordering. The site's own social links and its footer of directory
+     backlinks are ALL target="_blank" rel="noopener noreferrer" and all sit
+     around the apply button. A generic "first outbound anchor" fallback
+     returns the X community link, which is why the adapter's fallback matches
+     the LinkedIn job URL instead.
+
+  2. Content burial. The posting is a short summary wrapped in
+     div.min-w-0.flex-1, and that same utility class repeats on nested
+     ancestors AND on the tools mega-menu. Sharing the wrapper class is the
+     whole reason extractPageContent narrows by anchor and then takes the
+     largest match. The "More related jobs" rail carries other employers' full
+     descriptions and is <article>-based, which is why the adapter removes it.
 -->
 <html>
 <head><title>Senior Staff Software Engineer - Ui At Linkedin — FrontendGeek</title></head>
@@ -17,28 +27,56 @@
 </header>
 
 <main>
-  <h1>Senior Staff Software Engineer - Ui At Linkedin</h1>
-  <time datetime="2026-08-30T19:35:27.638231+00:00">Posted 1 week ago</time>
+  <!-- Tools mega-menu: same utility class as the job wrapper, no h1 inside. -->
+  <div class="min-w-0 flex-1">
+    <p>Browse by type</p>
+    <p>Social Tools All Video Downloader YouTube to MP3 Converter YouTube to MP4 Converter
+       Instagram Reel Downloader CSS Gradient Generator Box Shadow Generator JSON Formatter
+       Base64 Encoder Decoder Image Cropper Image Resizer SVG to PNG Converter</p>
+  </div>
 
-  <a href="https://www.linkedin.com/jobs/view/4457061762/" target="_blank" rel="noopener noreferrer"
-     role="button" data-slot="button" class="inline-flex items-center rounded-md">Apply Now</a>
+  <div class="min-w-0 flex-1">
+    <header class="space-y-4 border-b border-border pb-6">
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-medium tracking-wide text-foreground uppercase">LinkedIn</p>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h1>Senior Staff Software Engineer - Ui At Linkedin</h1>
+      </div>
+      <time datetime="2026-08-30T19:35:27.638231+00:00">Posted 1 week ago</time>
+    </header>
 
-  <h2>About the role</h2>
-  <p>LinkedIn is hiring a Senior Staff Software Engineer for its UI platform team in Bangalore.
-     You will own the architecture of shared frontend infrastructure used across the product.</p>
+    <div class="ad-slot">Advertise in this space Book this space</div>
 
-  <h2>Responsibilities</h2>
-  <ul>
-    <li>Lead design and delivery of shared UI infrastructure and component systems.</li>
-    <li>Partner with product teams on performance, accessibility and rendering strategy.</li>
-    <li>Mentor engineers and set frontend technical direction across the org.</li>
-  </ul>
+    <a href="https://www.linkedin.com/jobs/view/4457061762/" target="_blank" rel="noopener noreferrer"
+       role="button" data-slot="button" class="inline-flex items-center rounded-md">Apply Now</a>
 
-  <h2>Requirements</h2>
-  <ul>
-    <li>Deep experience with JavaScript, TypeScript and modern component frameworks.</li>
-    <li>Track record building large-scale web applications.</li>
-  </ul>
+    <section>
+      <h2>Job details</h2>
+      <p>About the role: LinkedIn is hiring a Senior Staff Software Engineer for its UI platform
+         team in Bangalore. You will own the architecture of shared UI infrastructure used across
+         the product.</p>
+      <p>Responsibilities include leading design and delivery of shared UI infrastructure and
+         component systems, partnering with product teams on performance, accessibility and
+         rendering strategy, and mentoring engineers. Requirements: deep experience with
+         JavaScript, TypeScript and modern component frameworks, and a track record building
+         large-scale web applications.</p>
+    </section>
+
+    <section>
+      <h2>More related jobs</h2>
+      <article>
+        <p>Barclays · 1 week ago Software Engineer-Ui At Barclays barclays react javascript
+           typescript node.js java Role: Software Engineer-UI. Responsibilities: Support delivery
+           of location strategy projects and spearhead digital landscape evolution.</p>
+      </article>
+      <article>
+        <p>AppZen · 2 weeks ago Senior Frontend Developer At Appzen appzen javascript typescript
+           react webpack Role: Senior Frontend Developer. Requirements: 5+ years of professional
+           software development experience.</p>
+      </article>
+    </section>
+  </div>
 </main>
 
 <footer>

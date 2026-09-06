@@ -38,17 +38,38 @@ module.exports = {
         },
         meta: {
             title: "h1",
-            // No hiring-company element on the detail page — the only
-            // /frontend-jobs/companies/ anchors there are the footer's static
-            // "popular companies" nav (Google, Meta, Amazon...), which would
-            // mislabel every job. The company name is in the h1 ("... At
-            // Cognizant") for the transformer to read.
-            company: null,
+            // The employer name sits in the posting header, in the uppercase
+            // eyebrow <p> directly above the h1. Anchoring on :has(h1) is what
+            // makes this safe: the site nav is also a <header>, comes first in
+            // document order, and would otherwise win .first(). Do NOT reach
+            // for /frontend-jobs/companies/ anchors — the only ones on a detail
+            // page are the footer's static "popular companies" nav (Google,
+            // Meta, Amazon...), which would label every job "Google".
+            //
+            // Supplying this is what lets the transformer match an existing
+            // CompanyV2 and switch to the job-only prompt, which is ~480 tokens
+            // smaller than the full company-enrichment one.
+            company: "header:has(h1) p.uppercase",
             // The page carries <time datetime="..."> with an exact timestamp,
             // but scrapeOne reads meta selectors as text, which would yield
             // "Posted 1 week ago" — vague enough to make the model guess a
             // wrong ISO date. datePosted is stamped at publish time anyway.
             postedDate: null,
+        },
+        // The posting itself is ~500 characters inside a 10-30KB page. Without
+        // scoping, a whole-page strip ships the tools mega-menu (every
+        // "YouTube to MP3 Converter" in the catalogue), the ad slots, and a
+        // "More related jobs" rail — which is worse than bulk, because those
+        // cards carry other employers' full descriptions right beside the real
+        // one. Whole-page prompts here measured 8.1-9.3K tokens and were
+        // rejected outright by the provider's per-minute cap; scoped, the same
+        // pages come in around 900-1100 characters.
+        //
+        // The related-job cards are <article> elements inside the wrapper, so
+        // they have to be removed explicitly — scoping alone does not drop them.
+        content: {
+            selector: "div.min-w-0.flex-1",
+            remove: ["article"],
         },
     },
 
@@ -66,6 +87,8 @@ module.exports = {
         "Frontend-focused Indian job board. Server-rendered Next.js: the explore feed ships the " +
         "whole catalogue (~429 postings) in one ~5MB document with no public API behind it, so " +
         "each run pays for that page before slicing the newest six. Detail pages carry no " +
-        "JSON-LD JobPosting but do run 1000+ words of visible JD copy. Apply links all resolve to " +
-        "linkedin.com/jobs/view/, so applyPlatform lands on 'linkedin' for every job from here.",
+        "JSON-LD JobPosting; the posting itself is a condensed ~500-word summary buried in 10-30KB " +
+        "of menus, ads and related-job cards, hence selectors.content. Apply links all resolve to " +
+        "linkedin.com/jobs/view/, so applyPlatform lands on 'linkedin' for every job from here — " +
+        "and that host is login-walled, so scrapeOne skips fetching companyPageContent for it.",
 };
