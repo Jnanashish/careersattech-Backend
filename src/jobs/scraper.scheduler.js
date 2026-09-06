@@ -9,8 +9,8 @@ const ScrapeLog = require("../modules/scraper/models/scrapeLog.model");
 const notifier = require("../modules/scraper/notifier");
 const { isStopRequested, clearStop } = require("../modules/scraper/stopFlags");
 
-// How many pending staging rows one run may sweep. Six adapter crons a day →
-// up to 600 backlog rows cleared daily, without one run doing an unbounded scan.
+// How many pending staging rows one run may sweep. Seven adapter crons a day →
+// up to 700 backlog rows cleared daily, without one run doing an unbounded scan.
 const BACKLOG_DRAIN_LIMIT = 100;
 
 async function runPipeline(trigger = "manual", adapterList = undefined, opts = {}) {
@@ -273,25 +273,33 @@ async function checkConsecutiveFailures(failedAdapters) {
     }
 }
 
-// Each source runs on its own daily cron, staggered 2 hours apart, so the
-// scraper-API keys and the AI provider never get hit by all six sources at
-// once. Times are IST (pinned via SCRAPER_TZ below). Anchored on the original
-// 6 PM IST slot (onlyfrontendjobs). Each cron runs the full pipeline for a
-// single adapter via runPipeline(trigger, [adapter]).
+// Each source runs on its own daily cron, staggered 3 hours apart, so the
+// scraper-API keys and the AI provider never get hit by all seven sources at
+// once. Times are IST (pinned via SCRAPER_TZ below), anchored at 12:00 and
+// wrapping through the night — seven slots at 3h span 21 hours, so the last
+// three land after midnight. Each cron runs the full pipeline for a single
+// adapter via runPipeline(trigger, [adapter]).
+//
+// The gap is the throttle: one adapter transforms at most ~10 jobs per run,
+// so widening 2h -> 3h is what keeps a day's LLM and scraper-API usage clear
+// of the per-key limits. Adding a source means extending the wrap, not
+// shrinking the gap.
 const SCRAPER_TZ = process.env.SCRAPER_TZ || "Asia/Kolkata";
+const STAGGER_HOURS = 3;
 
 const ADAPTER_SCHEDULES = [
     { name: "freshershunt", cron: "0 12 * * *" },     // 12:00 IST
-    { name: "freshersjobs", cron: "0 14 * * *" },     // 14:00 IST
-    { name: "offcampusjobs4u", cron: "0 16 * * *" },  // 16:00 IST
-    { name: "onlyfrontendjobs", cron: "0 18 * * *" }, // 18:00 IST (6 PM)
-    { name: "peerlist", cron: "0 20 * * *" },         // 20:00 IST
-    { name: "engineerhub", cron: "0 22 * * *" },      // 22:00 IST
+    { name: "freshersjobs", cron: "0 15 * * *" },     // 15:00 IST
+    { name: "offcampusjobs4u", cron: "0 18 * * *" },  // 18:00 IST
+    { name: "onlyfrontendjobs", cron: "0 21 * * *" }, // 21:00 IST
+    { name: "peerlist", cron: "0 0 * * *" },          // 00:00 IST
+    { name: "engineerhub", cron: "0 3 * * *" },       // 03:00 IST
+    { name: "talentd", cron: "0 6 * * *" },           // 06:00 IST
 ];
 
 function init() {
     console.log(
-        `[Scheduler] Staggering ${ADAPTER_SCHEDULES.length} adapters 2h apart (tz=${SCRAPER_TZ})`
+        `[Scheduler] Staggering ${ADAPTER_SCHEDULES.length} adapters ${STAGGER_HOURS}h apart (tz=${SCRAPER_TZ})`
     );
 
     for (const { name, cron: schedule } of ADAPTER_SCHEDULES) {
@@ -320,4 +328,4 @@ function init() {
     console.log("[Scheduler] Cron scheduled successfully");
 }
 
-module.exports = { init, runPipeline, ADAPTER_SCHEDULES, SCRAPER_TZ };
+module.exports = { init, runPipeline, ADAPTER_SCHEDULES, SCRAPER_TZ, STAGGER_HOURS };

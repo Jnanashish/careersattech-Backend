@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  Synthetic minimal fixture for the Talentd adapter test.
+  Mirrors the real https://www.talentd.in/jobs markup: each card on
+  "Find Your Dream Job" is covered by a full-bleed overlay anchor carrying
+  aria-label="View <role> at <company>", while every category / city / skill
+  page ALSO lives under /jobs/. The decoy taxonomy links below are the whole
+  reason the jobLinks selector matches on aria-label and not on href alone —
+  on the live page they outnumber the real postings 83 to 10.
+-->
+<html>
+<head><title>Jobs — Talentd (fixture)</title></head>
+<body>
+<header>
+  <a href="/jobs">All Jobs</a>
+  <a href="https://hire.talentd.in" target="_blank">Post a JobFree</a>
+</header>
+
+<main>
+  <h2>Find Your Dream Job</h2>
+
+  <!-- Taxonomy decoys: same /jobs/ prefix, no aria-label. Must NOT match. -->
+  <nav aria-label="Browse">
+    <a href="/jobs/freshers">Freshers</a>
+    <a href="/jobs/internships">Internships</a>
+    <a href="/jobs/it-software-jobs">IT &amp; Software</a>
+    <a href="/jobs/jobs-in-bangalore">Jobs in Bangalore</a>
+    <a href="/jobs/skills/aws">AWS</a>
+  </nav>
+
+  <div class="relative bg-card/80 rounded-xl border p-4 cursor-pointer">
+    <a class="absolute inset-0 z-0" aria-label="View AI/ML Intern at Tower Research" href="/jobs/aiml-intern-at-tower-research-gurgaon-apply-now-cpbv"></a>
+    <img alt="Tower Research logo" src="/_next/image?url=logo.jpg" />
+    <h3>AI/ML Intern</h3>
+    <span>Tower Research</span>
+    <span>Gurgaon</span>
+    <button type="button">Save</button>
+  </div>
+
+  <div class="relative bg-card/80 rounded-xl border p-4 cursor-pointer">
+    <a class="absolute inset-0 z-0" aria-label="View Apprentice at S&amp;P Global" href="/jobs/apprentice-at-sp-global-gurgaon-20252026-freshers-yvvy"></a>
+    <img alt="S&amp;P Global logo" src="/_next/image?url=logo2.jpg" />
+    <h3>Apprentice</h3>
+    <span>S&amp;P Global</span>
+    <span>Gurgaon</span>
+    <button type="button">Save</button>
+  </div>
+
+  <div class="relative bg-card/80 rounded-xl border p-4 cursor-pointer">
+    <a class="absolute inset-0 z-0" aria-label="View SDE Intern at Spyne" href="/jobs/sde-intern-at-spyne-gurugram-rs3-5-lpa-gnja"></a>
+    <img alt="Spyne logo" src="/_next/image?url=logo3.jpg" />
+    <h3>SDE Intern</h3>
+    <span>Spyne</span>
+    <span>Gurugram</span>
+    <button type="button">Save</button>
+  </div>
+</main>
+
+<footer>
+  <a href="/jobs/other-jobs">Other Jobs</a>
+  <a href="https://hire.talentd.in/#pricing" target="_blank">Pricing</a>
+</footer>
+</body>
+</html>

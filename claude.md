@@ -78,7 +78,8 @@ careersattech-Backend/
 │   ├── notifier.js                        # Telegram alerts
 │   ├── stopFlags.js                       # in-memory per-adapter stop signals
 │   ├── adapters/                          # freshershunt, freshersjobs, offcampusjobs4u,
-│   │                                      #   onlyfrontendjobs, peerlist, engineerhub (+ _template)
+│   │                                      #   onlyfrontendjobs, peerlist, engineerhub,
+│   │                                      #   talentd (+ _template)
 │   ├── providers/                         # gemini, groq, claude, openrouter (selected by AI_PROVIDER)
 │   └── models/{StagingJob,ScrapeLog}.js   # staging queue + run logs
 ├── migration/
@@ -416,12 +417,16 @@ Config file (gitignored): `.env`. See `.env.example` for template values.
 
 ## Schedulers
 Both initialize after the server starts listening:
-- `jobs/scraper.scheduler.js` — one cron per adapter, staggered 2h apart in
+- `jobs/scraper.scheduler.js` — one cron per adapter, staggered 3h apart in
   `SCRAPER_TZ` (default Asia/Kolkata) so the scraper-API keys and the AI
   provider are never hit by every source at once: freshershunt 12:00,
-  freshersjobs 14:00, offcampusjobs4u 16:00, onlyfrontendjobs 18:00,
-  peerlist 20:00, engineerhub 22:00 IST. Each fires `runPipeline("cron",
-  [adapter])`; checks for 5 consecutive failures and alerts via Telegram.
+  freshersjobs 15:00, offcampusjobs4u 18:00, onlyfrontendjobs 21:00,
+  peerlist 00:00, engineerhub 03:00, talentd 06:00 IST — seven slots at 3h
+  span 21 hours, so the last three land after midnight. The gap is the
+  throttle that keeps daily LLM/scraper-API usage under the per-key limits;
+  a new source extends the wrap rather than shrinking the gap. Each fires
+  `runPipeline("cron", [adapter])`; checks for 5 consecutive failures and
+  alerts via Telegram.
 - `blog/blog.scheduler.js` — `* * * * *` (every minute) flips
   `scheduled → published` when `scheduledFor <= now` and triggers Next.js
   revalidation.
