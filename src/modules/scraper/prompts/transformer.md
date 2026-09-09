@@ -10,6 +10,11 @@ NOTE: This company already exists in our database — its canonical name is prov
 <</EXISTING_COMPANY>>
 ────────────────────────────────────────────────
 READING THE INPUT:
+- `sourceHost` is the site this posting was scraped from. Judge every URL by its
+  host against this value, never by which field it arrived in: `sourceUrl` is an
+  aggregator permalink on some sources and the employer's own apply link on
+  others, and `companyPageUrl` is an apply link on some sources and a company
+  homepage on others.
 - `pageContent` starts with aggregator metadata (title, company, location, tech stack).
 - When it also contains a block headed "OFFICIAL JOB POSTING", that block is the
   company's own posting for this role. It is the AUTHORITATIVE source
@@ -42,7 +47,7 @@ OUTPUT JSON SHAPE — return exactly this top-level structure:
 "job" OBJECT — JobV2 fields (use ONLY these keys):
 {
   "title": "string (required) — clean, concise job title",
-  "applyLink": ""string (required) — the application URL, copied VERBATIM from the source. Prefer a company/ATS apply URL over an aggregator URL only when both appear in the source. If only an aggregator URL is present, use that exact URL. NEVER construct, guess, or pattern-transform a URL that is not present in the source.",
+  "applyLink": "string (required) — the URL that takes a candidate to the employer's application form, copied VERBATIM from the input (`companyPageUrl`, `sourceUrl`, or a URL visible in `pageContent`). Choose it by these rules, in order: (1) it MUST NOT be on `sourceHost` — the aggregator's permalink for this posting is provenance, not an apply link, and a job that links back to it is unusable; (2) prefer an apply/ATS URL over a company homepage; (3) prefer the employer's own domain over a job board, but an outbound job-board URL such as LinkedIn is the correct answer when it is the only apply link the source offers. NEVER construct, guess, or pattern-transform a URL that is not present in the input.",
   "displayMode": "string — 'internal' (we host the JD on our site) or 'external_redirect' (we just redirect). Default 'internal'.",
   "employmentType": "array of strings (required) — choose one or more from: ['FULL_TIME','PART_TIME','CONTRACTOR','INTERN','TEMPORARY']. Internships → ['INTERN']. Full-time roles → ['FULL_TIME']. Contractual → ['CONTRACTOR'].",
   "batch": "array of integers (required) — eligible graduation years between 2020 and 2030. For 'freshers' or '0-1 years' use the current year and the previous 2 years. Example: [2024, 2025, 2026]. Must be unique.",
@@ -125,7 +130,9 @@ RULES:
 - jobLocation is an array of OBJECTS with { city, region, country }, NOT strings.
 - requiredSkills, preferredSkills, topicTags<<NEW_COMPANY>>, tags, techStack, locations<</NEW_COMPANY>> are arrays of strings (lowercase where indicated).
 - If a field cannot be determined and is optional, set to null (or [] for arrays). If required, infer the closest sensible value.
-- applyLink MUST be the company's direct apply URL — NEVER the aggregator URL.
+- applyLink MUST NOT be on `sourceHost`. Prefer the employer's own apply URL, but
+  an outbound job-board URL (e.g. LinkedIn) is acceptable when that is the only
+  apply link the source offers — the scraped site's own permalink never is.
 - jobDescription.html must be ORIGINAL PROSE that you wrote. Reuse the source's
   facts, never its sentences — no clause of the source may survive verbatim.
   Proper nouns are the exception and must stay exact: company and product names,

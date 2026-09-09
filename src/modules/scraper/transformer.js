@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { getProvider } = require("./providers");
 const { findExistingCompany } = require("../../services/jobScrapeFromUrl/resolveCompany");
+const { pointsAtSourceSite } = require("./sourceHost");
 
 const RAW_PROMPT = fs.readFileSync(
     path.join(__dirname, "prompts", "transformer.md"),
@@ -80,8 +81,28 @@ function normalizeJob(job, rawJob) {
 
     out.title = typeof out.title === "string" ? out.title.trim() : null;
 
+    // The model chooses applyLink, and on some sources every candidate URL it
+    // can see is a bare link with nothing in the body text to identify it —
+    // FrontendGeek's apply button points at LinkedIn, a login-walled host we
+    // never fetch, so `companyPageContent` is null and the only signal is the
+    // field name. It sometimes answers with the aggregator's own permalink,
+    // which publishes a job whose Apply button loops back to the board we
+    // scraped. Drop any such link and fall back to a candidate the adapter
+    // already extracted, skipping ones on the source's own site — including
+    // `sourceUrl`, which for most adapters IS that permalink.
+    //
+    // Falling through to "" is intended: transform() then raises a missing
+    // applyLink and the job is retried, and finally reported as an error,
+    // rather than published pointing nowhere useful.
+    const sourceHost = rawJob.sourceHost;
+    if (typeof out.applyLink === "string" && pointsAtSourceSite(out.applyLink, sourceHost)) {
+        out.applyLink = "";
+    }
     if (!out.applyLink || typeof out.applyLink !== "string") {
-        out.applyLink = rawJob.companyPageUrl || rawJob.sourceUrl || "";
+        out.applyLink =
+            [rawJob.companyPageUrl, rawJob.sourceUrl].find(
+                (url) => typeof url === "string" && url && !pointsAtSourceSite(url, sourceHost)
+            ) || "";
     }
 
     out.displayMode = VALID_DISPLAY_MODES.includes(out.displayMode) ? out.displayMode : "internal";
@@ -259,6 +280,12 @@ async function transform(rawJob) {
     const systemPrompt = existingCompany ? JOB_ONLY_PROMPT : FULL_PROMPT;
 
     const userMessage = JSON.stringify({
+        // Names the aggregator so the prompt can rule out its URLs by host
+        // instead of by field name. The two URL fields mean different things
+        // per adapter — for the HTML scrapers `sourceUrl` is the board's
+        // permalink, for the API adapters it is the employer's apply link —
+        // so the host is the only thing the model can reason about reliably.
+        sourceHost: rawJob.sourceHost,
         sourceUrl: rawJob.sourceUrl,
         companyPageUrl: rawJob.companyPageUrl,
         meta: rawJob.meta,

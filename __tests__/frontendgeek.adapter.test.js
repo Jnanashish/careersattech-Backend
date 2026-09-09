@@ -132,6 +132,10 @@ describe("frontendgeek adapter — full scrapeOne flow", () => {
 
         const job = jobs[0];
         expect(job.source).toBe("frontendgeek");
+        // Carried so the transformer can reject an applyLink that loops back
+        // here — this board's apply link is a LinkedIn URL the model has no
+        // other way to tell apart from the permalink.
+        expect(job.sourceHost).toBe("frontendgeek.com");
         expect(job.sourceUrl).toBe(
             "https://frontendgeek.com/frontend-jobs/view/senior-staff-software-engineer-ui-at-linkedin-8ba76477"
         );

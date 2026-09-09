@@ -4,6 +4,7 @@ const StagingJob = require("./models/stagingJob.model");
 const { findCompanyByName } = require("./ingester");
 const { generateCompanySlug } = require("../../utils/slugify");
 const { resolveUniqueJobSlug } = require("../jobsV2/resolveJobSlug");
+const { pointsAtSourceSite } = require("./sourceHost");
 const logger = require("../../utils/logger");
 
 /**
@@ -140,8 +141,10 @@ async function buildJobV2Payload(staging, company, overrides = {}) {
  * `required` + the displayMode pre-validate hook). We run it pre-create so
  * the API can return field-level errors instead of a generic 500, and so
  * we never silently downgrade to draft on missing fields.
+ *
+ * `staging` is optional — pass it to also gate on the row's `sourceHost`.
  */
-function validatePublishReadiness(payload) {
+function validatePublishReadiness(payload, staging) {
     const errors = [];
     const requireString = (path, value) => {
         if (typeof value !== "string" || value.trim().length === 0) {
@@ -158,6 +161,20 @@ function validatePublishReadiness(payload) {
     if (!payload.company) errors.push({ path: "company", message: "company is required to publish" });
     requireString("companyName", payload.companyName);
     requireString("applyLink", payload.applyLink);
+
+    // Backstop for the transform-time guard in transformer.normalizeJob: a job
+    // whose Apply button returns to the board we scraped it from is worse than
+    // no job, so it stays pending for a human rather than going live. Only rows
+    // carrying `sourceHost` are judged — rows written before that field existed
+    // must not be blocked on a value we never recorded.
+    const sourceHost = staging && staging.sourceHost;
+    if (sourceHost && pointsAtSourceSite(payload.applyLink, sourceHost)) {
+        errors.push({
+            path: "applyLink",
+            message: `applyLink points back at the source site (${sourceHost}) instead of the employer`,
+        });
+    }
+
     requireNonEmptyArray("employmentType", payload.employmentType);
     requireNonEmptyArray("batch", payload.batch);
     if (!payload.datePosted) {
@@ -201,7 +218,7 @@ async function approveStagingJob(staging, overrides, approvedBy) {
     const payload = await buildJobV2Payload(staging, company, overrides);
 
     if (payload.status === "published") {
-        const fieldErrors = validatePublishReadiness(payload);
+        const fieldErrors = validatePublishReadiness(payload, staging);
         if (fieldErrors.length > 0) return { fieldErrors };
     }
 

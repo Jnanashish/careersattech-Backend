@@ -107,6 +107,11 @@ const stagingJobSchema = new mongoose.Schema(
         },
         scrapedAt: { type: Date, default: Date.now },
         source: String,
+        // Host of the adapter's own baseUrl. Kept so the publish gate can
+        // reject an applyLink that loops back to the board we scraped without
+        // re-resolving the adapter. Absent on rows written before this field
+        // existed, and the gate treats absent as "cannot judge".
+        sourceHost: String,
         sourceUrl: String,
         companyPageUrl: String,
         fingerprint: { type: String, unique: true },

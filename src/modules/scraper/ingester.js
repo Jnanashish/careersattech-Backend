@@ -106,6 +106,7 @@ async function ingest(transformedJobs, adapterName, aiProvider) {
             const stagedDoc = await StagingJob.create({
                 status: "pending",
                 source: adapterName,
+                sourceHost: job.sourceHost,
                 sourceUrl: job.sourceUrl,
                 companyPageUrl: job.companyPageUrl,
                 fingerprint,

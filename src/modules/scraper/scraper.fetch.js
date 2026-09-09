@@ -6,6 +6,7 @@ const { isStopRequested } = require("./stopFlags");
 const config = require("../../config");
 const logger = require("../../utils/logger");
 const { isPublicHttpsUrl } = require("../../utils/urlGuard");
+const { hostOf } = require("./sourceHost");
 
 const USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -217,9 +218,20 @@ async function scrapeOne(adapter, options = {}) {
         return { jobs: [], stats: { jobLinksFound: 0, jobsFetched: 0, errors: [], stopped: true } };
     }
 
+    // The aggregator's own host, taken from the adapter rather than from any
+    // scraped URL. Every raw job carries it so the transformer can reject an
+    // applyLink that loops back here, and so the publish gate can catch one
+    // that slips through. Stamped in this one place — including on the custom
+    // -scrape path — so an adapter cannot forget it.
+    const sourceHost = hostOf(adapter.baseUrl);
+
     if (typeof adapter.scrape === "function") {
         logger.info(`[Scraper] Starting ${adapter.displayName} (custom scrape)`);
-        return adapter.scrape(options);
+        const result = await adapter.scrape(options);
+        return {
+            ...result,
+            jobs: (result.jobs || []).map((job) => ({ sourceHost, ...job })),
+        };
     }
 
     const limit = options.limit || adapter.selectors.jobLinks.limit;
@@ -351,6 +363,7 @@ async function scrapeOne(adapter, options = {}) {
             stats.jobsFetched++;
             jobs.push({
                 source: adapter.name,
+                sourceHost,
                 sourceUrl: link,
                 companyPageUrl: companyUrl,
                 meta: { title, company, postedDate },

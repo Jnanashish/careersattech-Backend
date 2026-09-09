@@ -76,6 +76,7 @@ careersattech-Backend/
 │   ├── transformer.js                     # LLM transform: raw page → structured job
 │   ├── ingester.js                        # dedupe (fingerprint) + write to StagingJob
 │   ├── notifier.js                        # Telegram alerts
+│   ├── sourceHost.js                      # host compare: is this applyLink the aggregator's own?
 │   ├── stopFlags.js                       # in-memory per-adapter stop signals
 │   ├── adapters/                          # freshershunt, freshersjobs, offcampusjobs4u,
 │   │                                      #   onlyfrontendjobs, peerlist, engineerhub,
@@ -84,7 +85,8 @@ careersattech-Backend/
 │   └── models/{StagingJob,ScrapeLog}.js   # staging queue + run logs
 ├── migration/
 │   ├── 01-08-*.md                         # v2 migration playbook docs
-│   └── scripts/                           # seed-v2.js, verify-v2.js, e2e-v2.js, test-slugify.js
+│   └── scripts/                           # seed-v2.js, verify-v2.js, e2e-v2.js, test-slugify.js,
+│                                          #   fix-source-applylinks.js (--apply to write)
 ├── prompts/admin-company-panel.md         # LLM prompt(s)
 ├── __tests__/                             # company.test.js, jobs.test.js, security.test.js, setup.js, createApp.js
 ├── jest.config.js                         # node env, **/__tests__/**/*.test.js, 30s timeout
@@ -270,7 +272,9 @@ TTL index expires docs after 180 days.
 ### StagingJob (scraper)
 Ingest buffer + dedupe ledger for scraped jobs. `status`
 (`pending|approved|rejected`), `fingerprint` (unique, used for dedupe),
-`source`, `sourceUrl`, `companyPageUrl`, `jobData`/`companyData` (mirror JobV2 /
+`source`, `sourceHost` (the adapter's own `baseUrl` host — see "Apply links
+must leave the source site"), `sourceUrl`, `companyPageUrl`,
+`jobData`/`companyData` (mirror JobV2 /
 CompanyV2 fields), `matchedCompany`, `aiProvider`, `rejectedReason`,
 `approvedAt`, `approvedJob`, `autoPublishAttempts` + `lastAutoPublishError`
 (auto-publish bookkeeping).
@@ -327,6 +331,26 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
   `req.sessionHash` + `req.ipHash` (sha256 of ip + `CLICK_HASH_PEPPER`). Pepper
   is **required** — module throws on import if missing.
 - Scraper pre-filters by fingerprint before calling the LLM (saves API calls).
+- **Apply links must leave the source site.** The transformer LLM picks
+  `applyLink`, and on boards where every candidate is a bare URL with nothing in
+  the body text to identify it, it sometimes answers with the aggregator's own
+  permalink — publishing a job whose Apply button loops back to the board we
+  scraped. `scrapeOne` therefore stamps `sourceHost` (the adapter's `baseUrl`
+  host) on every raw job; `transformer.normalizeJob` drops any `applyLink` on
+  that host and falls back to `companyPageUrl`/`sourceUrl`, skipping candidates
+  on it; `validatePublishReadiness` rejects one that still gets through, so the
+  job waits in the review queue instead of going live. `sourceHost` is
+  deliberately the *adapter's* host, **not** the host of `sourceUrl` — adapters
+  reading a structured API (engineerhub, peerlist) set `sourceUrl` to the apply
+  link itself, and comparing against it would reject every job they produce. An
+  absent `sourceHost` fails open (legacy staging rows have none). Helpers live in
+  `scraper/sourceHost.js`; `migration/scripts/fix-source-applylinks.js` is the
+  one-off repair for rows written before the guard (dry run by default,
+  `--apply` to write).
+- The prompt names `sourceHost` in its input and forbids an `applyLink` on it.
+  An outbound job-board URL (LinkedIn) is a *valid* answer — FrontendGeek offers
+  nothing else — so do not reinstate a blanket "never an aggregator URL" rule:
+  that contradiction is what made the model echo the permalink in the first place.
 - **Scraper auto-publish.** Scraped jobs go live without human review. The
   pipeline still writes each job to `StagingJob` (dedupe fingerprints live
   there), then immediately runs it through the same `approveStagingJob` routine
