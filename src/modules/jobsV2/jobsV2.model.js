@@ -212,6 +212,11 @@ const jobV2Schema = new mongoose.Schema(
     archivedAt: { type: Date, default: null },
     archivedReason: { type: String, default: null },
 
+    // ─── Social digest ─────────────────────────────────────
+    // When the daily Telegram digest (services/socialDigest) sent this job.
+    // null = never sent; a stamped job is never offered to the digest again.
+    socialDigestSentAt: { type: Date, default: null },
+
     // ─── Soft delete ───────────────────────────────────────
     deletedAt: { type: Date, default: null },
   },

@@ -200,6 +200,15 @@ archived ones included)
 - `POST /test-adapter/:name` — dry-run an adapter (no save)
 - `POST /stop/:adapterName` — request adapter stop (cooperative)
 
+### Social digest admin — `/api/admin/social-digest` (`requireAuth`)
+- `GET /preview` — what the digest would send right now: `{ data: { jobs,
+  messages, reason, lookbackHours } }`. Sends and stamps nothing.
+- `POST /send` — send it to Telegram now; same selection and messages as the
+  16:00 cron. Body must be `{}` (strict — no dry-run flag here, use `/preview`).
+  200 `{ data: { sent: true, jobs, sentAt } }`, or 200 with `sent: false,
+  reason: "no-eligible-jobs"`; 409 while another send is in flight; 502 when
+  Telegram refuses a message (nothing is stamped, so the jobs stay eligible).
+
 ### GET /api/admin/jobs/v2 query params
 `page`, `limit` (max 100), `status`, `search` (text index), `company` (ObjectId),
 `employmentType` (single enum value — matches "array contains"),
@@ -243,7 +252,8 @@ enforced by `pre('validate')`), `category`, `workMode`, `degree[]`,
 `preferredSkills[]`, `topicTags[]`, `applyPlatform`, `datePosted`, `validThrough`,
 `isVerified`, `sponsorship.{tier,activeUntil}`, `priority`, `stats.{applyClicks,pageViews}`,
 `jdBanner`, `seo.{metaTitle,metaDescription,ogImage}`, `source`, `externalJobId`,
-`postedBy`, soft-delete via `deletedAt`. Includes text index on
+`postedBy`, `socialDigestSentAt` (set when the daily social digest sends the
+job; null = never sent), soft-delete via `deletedAt`. Includes text index on
 title/companyName/jobDescription.plain/requiredSkills.
 
 ### CompanyV2 → collection `companies_v2`
@@ -394,6 +404,13 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
   human (`retryExhausted: true` forces a retry). The filter has an
   `$exists: false` arm — rows predating the counter have no field, and a bare
   `$lt` would exclude exactly the backlog this exists to clear.
+- **The social digest mirrors the admin panel.** `services/socialDigest/bestToPost.js`
+  is the same three checks as `admin-panel/src/Helpers/bestToPost.js` (logo,
+  `companyType` ∈ bigtech/mnc/unicorn/product, experience inside 0–4 years), and
+  `services/socialDigest/captions/` is a port of the admin's
+  `Helpers/JobListHelper` caption builders, verbatim apart from ESM → CommonJS.
+  The digest promises to send what the admin panel marks and captions the admin
+  Daily Digest would build, so change both copies together.
 - Blog publish/update fires a Next.js ISR revalidation webhook when configured.
 - All v2 / blog / admin write routes validate with Zod before reaching the
   controller; validated payload is on `req.validated`.
@@ -462,12 +479,18 @@ VERIFY_JOBS_DRY_RUN=false    # "true" = log what would be deleted, write nothing
 EXPIRED_JOBS_GRACE_DAYS=0    # days a date-expired job is kept before deletion
 RESEND_API_KEY, VERIFY_EMAIL_FROM, VERIFY_EMAIL_TO   # verifier email summary
 
+# Daily social digest (socialDigest.scheduler)
+SOCIAL_DIGEST_ENABLED=true          # cron is NOT scheduled unless exactly "true"
+SOCIAL_DIGEST_CRON=0 16 * * *       # daily at 16:00
+SOCIAL_DIGEST_TZ=Asia/Kolkata
+SOCIAL_DIGEST_LOOKBACK_HOURS=24     # how far back datePosted may be
+
 NODE_ENV=production     # gates secure cookie flag
 ```
 Config file (gitignored): `.env`. See `.env.example` for template values.
 
 ## Schedulers
-All three initialize after the server starts listening:
+All four initialize after the server starts listening:
 - `jobs/scraper.scheduler.js` — one cron per adapter, staggered 3h apart in
   `SCRAPER_TZ` (default Asia/Kolkata) so the scraper-API keys and the AI
   provider are never hit by every source at once: freshershunt 12:00,
@@ -491,6 +514,17 @@ All three initialize after the server starts listening:
   published job's apply link, oldest-checked first, hard-delete the dead).
   A pass throwing never skips the Telegram `cleanup` report — the deleted
   counts are the only record of an irreversible operation.
+- `jobs/socialDigest.scheduler.js` — daily social digest, `0 16 * * *`
+  (`SOCIAL_DIGEST_CRON`) in `SOCIAL_DIGEST_TZ` (default Asia/Kolkata). Scheduled
+  only when `SOCIAL_DIGEST_ENABLED=true`, so a dev server on the shared database
+  never posts or stamps. Picks up to 6 jobs that are published, live (no past
+  `validThrough`), posted in the last `SOCIAL_DIGEST_LOOKBACK_HOURS` (default
+  24), never sent (`socialDigestSentAt: null`) and best-to-post; ranks them
+  bigtech > unicorn > product > mnc, newest first within a type. Posts three
+  messages to the `socialDigest` Telegram channel — the job list, the Instagram
+  caption, the WhatsApp message (site links) — and stamps `socialDigestSentAt`
+  only after all three are accepted. Zero eligible jobs → nothing is posted.
+  A refused send leaves the jobs unstamped and alerts the `general` channel.
 
 ## Security Checklist (before every PR)
 - [ ] Input sanitized (regex via `escapeRegex`) and validated (Zod for v2/blog/admin)

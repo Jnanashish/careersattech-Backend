@@ -52,6 +52,10 @@ const TELEGRAM_CHANNELS = Object.freeze({
     // link it confirms dead. Generic channel, so every message carries a
     // "Cleanup — Jobs Directory" header.
     cleanupChatId: "-1004369332585",
+    // The daily social digest (jobs/socialDigest.scheduler): the top
+    // best-to-post jobs with a ready-to-paste Instagram caption and WhatsApp
+    // message.
+    socialDigestChatId: "-1004365242156",
 });
 
 const config = Object.freeze({

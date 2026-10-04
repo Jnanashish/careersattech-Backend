@@ -21,6 +21,7 @@ const companiesV2AdminRoutes = require("./modules/companiesV2/companiesV2.admin.
 const jobsV2PublicRoutes = require("./modules/jobsV2/jobsV2.public.routes");
 const jobsV2PublicReadRoutes = require("./modules/jobsV2/jobsV2.publicRead.routes");
 const companiesV2PublicReadRoutes = require("./modules/companiesV2/companiesV2.publicRead.routes");
+const socialDigestAdminRoutes = require("./modules/socialDigest/socialDigest.admin.routes");
 
 const app = express();
 
@@ -104,6 +105,7 @@ app.use("/api", blogRoutes);
 app.use("/api", blogAdminRoutes);
 app.use("/api", jobsV2AdminRoutes);
 app.use("/api", companiesV2AdminRoutes);
+app.use("/api", socialDigestAdminRoutes);
 app.use("/api/jobs/v2", jobsV2PublicReadRoutes);
 app.use("/api/companies/v2", companiesV2PublicReadRoutes);
 app.use("/api", jobsV2PublicRoutes);

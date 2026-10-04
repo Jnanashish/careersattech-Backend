@@ -6,6 +6,7 @@ const { notifyGeneralError } = require("./src/utils/telegram");
 const scraperScheduler = require("./src/jobs/scraper.scheduler");
 const blogScheduler = require("./src/jobs/blog.scheduler");
 const verifyJobsScheduler = require("./src/jobs/verifyJobs.scheduler");
+const socialDigestScheduler = require("./src/jobs/socialDigest.scheduler");
 
 // Crash-level events. Node's default for both is to terminate, and that stays
 // the behaviour here — the process is in an unknown state and Railway restarts
@@ -31,4 +32,5 @@ app.listen(config.server.port, () => {
     scraperScheduler.init();
     blogScheduler.init();
     verifyJobsScheduler.init();
+    socialDigestScheduler.init();
 });

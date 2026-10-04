@@ -2,13 +2,14 @@ const axios = require("axios");
 const config = require("../config");
 const logger = require("./logger");
 
-// Four destinations, one bot. The bot token is per-bot; the chat ID is per
+// Five destinations, one bot. The bot token is per-bot; the chat ID is per
 // channel, so a single token posts to all of them.
 //
-//   scraper — anything the scrape pipeline failed at
-//   general — important backend errors (500s, process-level crashes)
-//   jobs    — the run's published-job list
-//   cleanup — scheduled jobs-directory maintenance (the daily expiry sweep)
+//   scraper      — anything the scrape pipeline failed at
+//   general      — important backend errors (500s, process-level crashes)
+//   jobs         — the run's published-job list
+//   cleanup      — scheduled jobs-directory maintenance (the daily expiry sweep)
+//   socialDigest — the daily top jobs with captions to paste (services/socialDigest)
 //
 // The chat IDs are pinned in config (TELEGRAM_CHANNELS); only the bot token
 // comes from env.
@@ -17,6 +18,7 @@ const CHANNELS = {
     general: () => config.telegram.generalErrorsChatId,
     jobs: () => config.telegram.jobsChatId,
     cleanup: () => config.telegram.cleanupChatId,
+    socialDigest: () => config.telegram.socialDigestChatId,
 };
 
 // Telegram hard-caps a sendMessage payload at 4096 characters and rejects the
