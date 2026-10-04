@@ -8,7 +8,7 @@ const logger = require("./logger");
 //   scraper — anything the scrape pipeline failed at
 //   general — important backend errors (500s, process-level crashes)
 //   jobs    — the run's published-job list
-//   cleanup — scheduled jobs-directory maintenance (the expired-link sweep)
+//   cleanup — scheduled jobs-directory maintenance (the daily expiry sweep)
 //
 // The chat IDs are pinned in config (TELEGRAM_CHANNELS); only the bot token
 // comes from env.
@@ -166,15 +166,16 @@ async function notifyGeneralError(context, err, opts = {}) {
  * so every message leads with a "Cleanup — Jobs Directory" header that says
  * which sweep it came from.
  *
- * Deliberately NOT throttled: this fires at most twice a day, and the deleted
- * count is the only record of an irreversible operation. Collapsing two runs
- * with an identical count into one message would hide a real deletion.
+ * Deliberately NOT throttled: this fires once a day, and the deleted count is
+ * the only record of an irreversible operation. Collapsing two runs with an
+ * identical count into one message would hide a real deletion.
  *
  * @param {object} report
- * @param {number} report.deletedCount   jobs hard-deleted this run
+ * @param {number} report.deletedCount   jobs hard-deleted by the apply-link verifier
+ * @param {number} [report.expiredDeleted] jobs hard-deleted for being past validThrough
  * @param {number} [report.clickEventsDeleted]
  * @param {number} [report.totalChecked] apply links fetched
- * @param {number} [report.expiryArchived] jobs archived by the validThrough sweep
+ * @param {number} [report.expiryArchived] jobs archived while still inside the grace window
  * @param {number} [report.durationMs]
  * @param {boolean} [report.dryRun]
  * @param {Array<{slug?: string, title?: string, companyName?: string, reason?: string}>} [report.deletedJobs]
@@ -183,6 +184,7 @@ async function notifyGeneralError(context, err, opts = {}) {
 async function notifyJobCleanup(report = {}) {
     const {
         deletedCount = 0,
+        expiredDeleted = 0,
         clickEventsDeleted = 0,
         totalChecked = 0,
         expiryArchived = 0,
@@ -192,12 +194,18 @@ async function notifyJobCleanup(report = {}) {
         error = null,
     } = report;
 
-    const lines = [`🧹 <b>Cleanup — Jobs Directory</b>`, "Expired apply-link sweep"];
+    // Two independent reasons a job is destroyed, reported separately: a passed
+    // validThrough date, and an apply link the verifier confirmed dead.
+    const totalDeleted = deletedCount + expiredDeleted;
+
+    const lines = [`🧹 <b>Cleanup — Jobs Directory</b>`, "Daily expiry + apply-link sweep"];
     if (dryRun) lines.push("<i>DRY RUN — nothing was written or deleted</i>");
     lines.push("");
-    lines.push(`<b>Deleted: ${deletedCount}</b> job(s)`);
+    lines.push(`<b>Deleted: ${totalDeleted}</b> job(s)`);
+    lines.push(`• past validThrough: ${expiredDeleted}`);
+    lines.push(`• dead apply link: ${deletedCount}`);
     lines.push(`Checked: ${totalChecked} apply link(s)`);
-    if (expiryArchived) lines.push(`Archived (past validThrough): ${expiryArchived}`);
+    if (expiryArchived) lines.push(`Archived (inside grace window): ${expiryArchived}`);
     if (clickEventsDeleted) lines.push(`Click events removed: ${clickEventsDeleted}`);
     lines.push(`Took: ${Math.round(durationMs / 1000)}s`);
 

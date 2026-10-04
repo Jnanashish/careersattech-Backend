@@ -47,9 +47,10 @@ const TELEGRAM_CHANNELS = Object.freeze({
     generalErrorsChatId: "-1004312539475",
     // The published-job list for each run.
     jobsChatId: "-1004417232066",
-    // Scheduled maintenance of the jobs directory — currently the 12-hourly
-    // expired-link sweep, which hard-deletes what it confirms dead. Generic
-    // channel, so every message carries a "Cleanup — Jobs Directory" header.
+    // Scheduled maintenance of the jobs directory — currently the daily sweep
+    // that hard-deletes jobs past their validThrough plus the ones whose apply
+    // link it confirms dead. Generic channel, so every message carries a
+    // "Cleanup — Jobs Directory" header.
     cleanupChatId: "-1004369332585",
 });
 

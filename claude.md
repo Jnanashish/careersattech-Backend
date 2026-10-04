@@ -301,13 +301,31 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
 - `POST /:id/restore` un-archives to a *non-live* status (`draft` for jobs,
   `inactive` for companies) — never straight back to published. A job archived
   for a dead apply link must not silently go live again.
-- **The 12-hourly cron is the one automated hard-delete in the codebase.**
-  `runVerification({ deleteExpired: true })` (only `init()` passes it) removes
-  confirmed-expired jobs and their `JobClickV2` events from Mongo — no
-  `deletedAt`, no restore, nothing left to review. Every other caller of the
-  same function archives. Guard any change here: widening what the verifier
-  calls `expired` now widens what gets destroyed twice a day, unattended.
-  `VERIFY_JOBS_DRY_RUN=true` is the safe way to test a change against prod data.
+- **The daily cron is the only automated hard-delete in the codebase**, and it
+  deletes for two independent reasons:
+  1. `deleteExpiredJobs()` — the date sweep. A job whose `validThrough` has
+     passed is removed from Mongo with its `JobClickV2` events. Scope is
+     `deletedAt: null` + `validThrough <= cutoff` + (`status: "published"` OR
+     `archivedReason: "auto-expired-validThrough"`, which clears the backlog
+     the archive-only era left). Drafts, paused jobs, admin-archived and
+     soft-deleted jobs are never touched — a stale date on an unpublished
+     draft is not a posting that expired.
+  2. `runVerification({ deleteExpired: true })` (only `init()` passes it) —
+     removes jobs whose apply link the verifier confirms dead, plus their
+     click events. Every other caller of that function archives instead.
+  Neither leaves a `deletedAt`, a restore path, or anything to review. Guard
+  any change here: widening what counts as `expired` — the date filter or the
+  verifier's verdict — widens what gets destroyed every night, unattended.
+  `VERIFY_JOBS_DRY_RUN=true`, or `node scripts/verifyJobs.js --expiry-only
+  --dry-run`, is the safe way to test a change against prod data.
+- **`EXPIRED_JOBS_GRACE_DAYS` (default 0) is the only brake on the date sweep.**
+  At 0 a job is deleted on the first run after `validThrough` passes. Set to N
+  and the cutoff moves back N days: `archiveExpiredJobs` flips the jobs inside
+  the window to `archived` and `deleteExpiredJobs` takes them once they clear
+  it — archive-now / delete-later. That is why the delete pass runs *before*
+  the archive pass and why it also matches `archivedReason:
+  "auto-expired-validThrough"`; reversing the order would archive a job and
+  delete it in the same run while reporting both.
 - **Two archive shapes exist.** The cron sweeps (`archiveExpiredJobs`, the link
   verifier's non-delete path) set `status: "archived"` and leave `deletedAt` null;
   `POST /:id/archive` sets both. Anything that asks "is this archived?" must
@@ -435,12 +453,21 @@ BLOG_CLOUDINARY_FOLDER=blog
 NEXT_REVALIDATION_URL, REVALIDATE_SECRET
 SITE_URL, SITE_TITLE, SITE_DESCRIPTION   # used by RSS feed
 
+# Daily jobs cleanup (verifyJobs.scheduler)
+VERIFY_JOBS_ENABLED=true     # cron is NOT scheduled unless exactly "true"
+VERIFY_JOBS_CRON=0 0 * * *   # daily; the hard deletes run on this schedule
+VERIFY_JOBS_TZ=Asia/Kolkata
+VERIFY_JOBS_CONCURRENCY=5    # parallel apply-link fetches
+VERIFY_JOBS_DRY_RUN=false    # "true" = log what would be deleted, write nothing
+EXPIRED_JOBS_GRACE_DAYS=0    # days a date-expired job is kept before deletion
+RESEND_API_KEY, VERIFY_EMAIL_FROM, VERIFY_EMAIL_TO   # verifier email summary
+
 NODE_ENV=production     # gates secure cookie flag
 ```
 Config file (gitignored): `.env`. See `.env.example` for template values.
 
 ## Schedulers
-Both initialize after the server starts listening:
+All three initialize after the server starts listening:
 - `jobs/scraper.scheduler.js` — one cron per adapter, staggered 3h apart in
   `SCRAPER_TZ` (default Asia/Kolkata) so the scraper-API keys and the AI
   provider are never hit by every source at once: freshershunt 12:00,
@@ -454,6 +481,16 @@ Both initialize after the server starts listening:
 - `blog/blog.scheduler.js` — `* * * * *` (every minute) flips
   `scheduled → published` when `scheduledFor <= now` and triggers Next.js
   revalidation.
+- `jobs/verifyJobs.scheduler.js` — daily jobs-directory cleanup, `0 0 * * *`
+  (`VERIFY_JOBS_CRON`) in `VERIFY_JOBS_TZ` (default Asia/Kolkata). Scheduled
+  only when `VERIFY_JOBS_ENABLED=true`; an invalid cron expression is logged
+  and skipped, not thrown. Three passes per run, in this order:
+  `deleteExpiredJobs()` (hard-delete past `validThrough`) →
+  `archiveExpiredJobs()` (grace-window archive, a no-op at the default grace
+  of 0) → `runVerification({ deleteExpired: true })` (fetch every remaining
+  published job's apply link, oldest-checked first, hard-delete the dead).
+  A pass throwing never skips the Telegram `cleanup` report — the deleted
+  counts are the only record of an irreversible operation.
 
 ## Security Checklist (before every PR)
 - [ ] Input sanitized (regex via `escapeRegex`) and validated (Zod for v2/blog/admin)

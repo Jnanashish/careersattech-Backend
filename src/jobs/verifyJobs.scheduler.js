@@ -6,9 +6,16 @@ const { verifyJob } = require("../services/jobVerifier");
 const emailReporter = require("../services/jobVerifier/emailReporter");
 const { notifyJobCleanup } = require("../utils/telegram");
 
-const DEFAULT_CRON = "0 */12 * * *"; // every 12 hours — 00:00 and 12:00
+const DEFAULT_CRON = "0 0 * * *"; // once a day at 00:00 in VERIFY_JOBS_TZ
 const DEFAULT_CONCURRENCY = 5;
 const PER_DOMAIN_GAP_MS = 2_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Stamped on every job the date sweep archives, and the marker the delete
+// sweep uses to recognise its own earlier output. A job archived by hand
+// through the admin panel carries a different reason (and a deletedAt), so the
+// automated delete never picks it up.
+const AUTO_EXPIRED_REASON = "auto-expired-validThrough";
 
 function getConcurrency() {
     const n = Number(process.env.VERIFY_JOBS_CONCURRENCY);
@@ -17,6 +24,17 @@ function getConcurrency() {
 
 function isDryRun() {
     return process.env.VERIFY_JOBS_DRY_RUN === "true";
+}
+
+/**
+ * Days a date-expired job is kept before the hard delete. 0 — the default —
+ * deletes it on the first daily run after `validThrough` passes. A positive
+ * value leaves it archived for that long first, so a mistyped date can still
+ * be spotted and restored before the document is gone.
+ */
+function getExpiryGraceDays() {
+    const n = Number(process.env.EXPIRED_JOBS_GRACE_DAYS);
+    return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 let pLimitLib;
@@ -128,7 +146,7 @@ function buildJobUpdate(job, result, now) {
  * @param {boolean} [opts.skipEmail]
  * @param {boolean} [opts.deleteExpired] hard-delete confirmed-expired jobs
  *   instead of archiving them. IRREVERSIBLE — the documents and their click
- *   events are removed. Opt-in, and only the 12-hourly cron opts in; the admin
+ *   events are removed. Opt-in, and only the daily cron opts in; the admin
  *   panel's manual scan archives into the reviewable flagged queue instead.
  *   Suppressed by dryRun like every other write.
  * @param {string} [opts.trigger]  "cron" | "manual"
@@ -282,7 +300,7 @@ async function runVerification(opts = {}) {
 }
 
 /**
- * Archive time-expired jobs.
+ * Archive time-expired jobs — the grace-window half of the date sweep.
  *
  * "Expired" here matches exactly what the public API reports as `isExpired`:
  * a published job whose `validThrough` date has passed. Such jobs are already
@@ -294,6 +312,11 @@ async function runVerification(opts = {}) {
  * Archive only — never deletes (no deletedAt), and only touches genuinely
  * expired jobs. Distinct from the link-verifier, which archives *dead-link*
  * jobs; this one is a pure date-based DB sweep with no outbound requests.
+ *
+ * Ordering note: `deleteExpiredJobs` runs FIRST in the cron, so all that is
+ * left for this pass is whatever expired too recently to be past the grace
+ * cutoff. With the default grace of 0 that set is empty and this matches
+ * nothing — it only does real work once EXPIRED_JOBS_GRACE_DAYS is set.
  *
  * @param {object} [opts]
  * @param {boolean} [opts.dryRun]
@@ -319,7 +342,7 @@ async function archiveExpiredJobs(opts = {}) {
         $set: {
             status: "archived",
             archivedAt: now,
-            archivedReason: "auto-expired-validThrough",
+            archivedReason: AUTO_EXPIRED_REASON,
         },
     });
 
@@ -328,6 +351,95 @@ async function archiveExpiredJobs(opts = {}) {
         `[expire] archived ${archived} expired job(s) (matched=${res.matchedCount || 0}, validThrough <= now)`
     );
     return { archived, matched: res.matchedCount || 0, dryRun: false, checkedAt: now };
+}
+
+/**
+ * Hard-delete time-expired jobs. IRREVERSIBLE.
+ *
+ * "Expired" is the same date contract the public reads already honour: a job
+ * whose stated `validThrough` has passed. Those jobs are invisible to the
+ * public API the moment the date rolls over; this sweep takes them out of
+ * Mongo for good, together with their JobClickV2 events.
+ *
+ * Scope is deliberately narrow. A job goes only when `validThrough` is set and
+ * at or before the cutoff AND it is either still `published` or was archived by
+ * this same automation (`archivedReason === AUTO_EXPIRED_REASON` — which is how
+ * the backlog from the archive-only era gets cleared). Drafts, paused jobs,
+ * admin-archived jobs and soft-deleted jobs are left alone: a stale date on a
+ * draft nobody published is not a live posting that expired.
+ *
+ * `EXPIRED_JOBS_GRACE_DAYS` (default 0) moves the cutoff back that many days,
+ * turning this plus `archiveExpiredJobs` into archive-now / delete-later.
+ *
+ * @param {object} [opts]
+ * @param {boolean} [opts.dryRun] list and log what matches, write nothing
+ * @param {number} [opts.graceDays] override EXPIRED_JOBS_GRACE_DAYS
+ * @returns {Promise<{deleted:number,matched:number,clickEventsDeleted:number,dryRun:boolean,cutoff:Date,graceDays:number,jobs:Array<object>}>}
+ */
+async function deleteExpiredJobs(opts = {}) {
+    const dryRun = opts.dryRun ?? isDryRun();
+    const graceDays = opts.graceDays ?? getExpiryGraceDays();
+    const now = new Date();
+    const cutoff = graceDays > 0 ? new Date(now.getTime() - graceDays * DAY_MS) : now;
+
+    const filter = {
+        deletedAt: null,
+        validThrough: { $ne: null, $lte: cutoff },
+        $or: [{ status: "published" }, { archivedReason: AUTO_EXPIRED_REASON }],
+    };
+
+    // Read the documents before removing them: once deleteMany has run this
+    // list is the only record of what was destroyed, so it goes to the logs and
+    // to the Telegram cleanup report.
+    const doomed = await JobV2.find(filter)
+        .select("_id slug title companyName applyLink validThrough status")
+        .lean();
+
+    const jobs = doomed.map((j) => ({
+        _id: j._id,
+        slug: j.slug,
+        title: j.title,
+        companyName: j.companyName,
+        applyLink: j.applyLink,
+        reason: `validThrough ${new Date(j.validThrough).toISOString().slice(0, 10)}`,
+    }));
+
+    const base = { matched: jobs.length, dryRun, cutoff, graceDays, jobs };
+    const where = `validThrough <= ${cutoff.toISOString()}, grace=${graceDays}d`;
+
+    if (dryRun) {
+        logger.info(`[expire] dry-run: would hard-delete ${jobs.length} expired job(s) (${where})`);
+        return { ...base, deleted: 0, clickEventsDeleted: 0 };
+    }
+
+    if (jobs.length === 0) {
+        logger.info(`[expire] no expired jobs to delete (${where})`);
+        return { ...base, deleted: 0, clickEventsDeleted: 0 };
+    }
+
+    for (const j of jobs) {
+        logger.info(`[expire] deleting ${j._id} ${j.slug} — ${j.reason}`);
+    }
+
+    const ids = doomed.map((j) => j._id);
+    const del = await JobV2.deleteMany({ _id: { $in: ids } });
+    const deleted = del.deletedCount || 0;
+
+    // Click events are analytics-only; failing to clear them must not turn a
+    // completed delete into a failed run. Mirrors runVerification.
+    let clickEventsDeleted = 0;
+    try {
+        const clicks = await JobClickV2.deleteMany({ job: { $in: ids } });
+        clickEventsDeleted = clicks.deletedCount || 0;
+    } catch (clickErr) {
+        logger.error(`[expire] failed to clear click events for deleted jobs: ${clickErr.message}`);
+    }
+
+    logger.info(
+        `[expire] hard-deleted ${deleted} expired job(s), ${clickEventsDeleted} click event(s) (${where})`
+    );
+
+    return { ...base, deleted, clickEventsDeleted };
 }
 
 function init() {
@@ -346,28 +458,48 @@ function init() {
     cron.schedule(
         schedule,
         async () => {
-            // Twice-daily maintenance. Two passes, in this order:
+            const cronStartedAt = Date.now();
+
+            // Daily maintenance. Three passes, in this order:
             //
-            //   1. archiveExpiredJobs — pure date sweep. Jobs past their stated
-            //      validThrough become "archived", which drops them out of the
-            //      published set. They are NOT deleted, and because pass 2 only
-            //      looks at published jobs, they are not link-checked either.
-            //   2. runVerification — fetches each remaining published job's
+            //   1. deleteExpiredJobs — pure date sweep, and IRREVERSIBLE. A job
+            //      whose stated validThrough has passed (by more than
+            //      EXPIRED_JOBS_GRACE_DAYS) is removed from Mongo along with
+            //      its click events. Covers jobs still sitting at "published"
+            //      and ones an earlier run archived as auto-expired.
+            //   2. archiveExpiredJobs — the grace-window pass. Jobs that
+            //      expired too recently for pass 1 are flipped to "archived"
+            //      so they leave the published set while they wait it out.
+            //      With the default grace of 0 pass 1 already took them and
+            //      this matches nothing.
+            //   3. runVerification — fetches each remaining published job's
             //      apply link, oldest-checked first, and hard-deletes the ones
             //      the verifier confirms dead.
             //
-            // Neither pass throwing may skip the Telegram report: the deleted
-            // count is the only record of an irreversible operation.
+            // No pass throwing may skip the Telegram report: the deleted counts
+            // are the only record of an irreversible operation.
+            let expiredDeleted = 0;
+            let expiredClickEvents = 0;
+            let expiredJobs = [];
             let expiryArchived = 0;
             let summary = null;
             let failure = null;
 
             try {
-                const expiry = await archiveExpiredJobs();
-                expiryArchived = expiry.archived;
-                logger.info(`[verify] expiry sweep archived ${expiry.archived} job(s)`);
+                const expiry = await deleteExpiredJobs();
+                expiredDeleted = expiry.deleted;
+                expiredClickEvents = expiry.clickEventsDeleted;
+                expiredJobs = expiry.jobs;
             } catch (err) {
-                logger.error(`[expire] cron sweep failed: ${err.stack || err.message}`);
+                logger.error(`[expire] cron delete sweep failed: ${err.stack || err.message}`);
+                failure = err;
+            }
+
+            try {
+                const archived = await archiveExpiredJobs();
+                expiryArchived = archived.archived;
+            } catch (err) {
+                logger.error(`[expire] cron archive sweep failed: ${err.stack || err.message}`);
                 failure = err;
             }
 
@@ -381,11 +513,12 @@ function init() {
             // Fire-and-forget by contract — notifyJobCleanup never throws.
             await notifyJobCleanup({
                 deletedCount: summary?.deletedCount ?? 0,
-                clickEventsDeleted: summary?.clickEventsDeleted ?? 0,
+                expiredDeleted,
+                clickEventsDeleted: (summary?.clickEventsDeleted ?? 0) + expiredClickEvents,
                 totalChecked: summary?.totalChecked ?? 0,
-                durationMs: summary?.durationMs ?? 0,
+                durationMs: Date.now() - cronStartedAt,
                 dryRun: summary?.dryRun ?? isDryRun(),
-                deletedJobs: summary?.deletedJobs ?? [],
+                deletedJobs: [...expiredJobs, ...(summary?.deletedJobs ?? [])],
                 expiryArchived,
                 error: failure,
             });
@@ -398,10 +531,13 @@ module.exports = {
     init,
     runVerification,
     archiveExpiredJobs,
+    deleteExpiredJobs,
     _internals: {
         buildJobUpdate,
         hostnameOf,
         makeDomainThrottle,
+        getExpiryGraceDays,
         PER_DOMAIN_GAP_MS,
+        AUTO_EXPIRED_REASON,
     },
 };
