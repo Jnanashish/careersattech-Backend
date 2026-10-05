@@ -11,6 +11,8 @@ const { buildWhatsAppMessage } = require("./captions/whatsapp");
 // channel. Every job sent is stamped with socialDigestSentAt so it is never
 // sent twice.
 
+// How many jobs the cron sends, and the most any send may take: the message
+// length budget below is sized for six.
 const DIGEST_SIZE = 6;
 const DEFAULT_LOOKBACK_HOURS = 24;
 const HOUR_MS = 60 * 60 * 1000;
@@ -53,13 +55,18 @@ function compareCandidates(a, b) {
 
 /**
  * The jobs the next digest would send: published, live, posted inside the
- * lookback window, never sent before, and best-to-post — ranked and capped.
+ * lookback window, never sent before, and best-to-post — ranked, then capped
+ * at `count`.
  *
  * The window is measured on datePosted, the date the public site sorts by.
  * With a daily run and the default 24h window, consecutive runs tile the
  * timeline exactly: a job that misses today's top six is not offered tomorrow.
  */
-async function selectDigestJobs({ now = new Date(), lookbackHours = getLookbackHours() } = {}) {
+async function selectDigestJobs({
+    now = new Date(),
+    lookbackHours = getLookbackHours(),
+    count = DIGEST_SIZE,
+} = {}) {
     const since = new Date(now.getTime() - lookbackHours * HOUR_MS);
 
     const candidates = await JobV2.find({
@@ -75,7 +82,7 @@ async function selectDigestJobs({ now = new Date(), lookbackHours = getLookbackH
         .limit(CANDIDATE_CAP)
         .lean();
 
-    return candidates.filter(isBestToPost).sort(compareCandidates).slice(0, DIGEST_SIZE);
+    return candidates.filter(isBestToPost).sort(compareCandidates).slice(0, count);
 }
 
 function formatDigestDate(now) {
@@ -112,8 +119,9 @@ function buildJobsListMessage(jobs, { now, lookbackHours }) {
  * only because utils/telegram sends with parse_mode HTML), so a long-press →
  * Copy yields exactly the text to paste.
  *
- * Six jobs keep each message far below the 3900-character cap utils/telegram
- * truncates at — and a truncated caption would be pasted with the cut in it.
+ * At most DIGEST_SIZE (six) jobs keep each message far below the 3900-character
+ * cap utils/telegram truncates at — and a truncated caption would be pasted
+ * with the cut in it.
  */
 function buildDigestMessages(jobs, { now = new Date(), lookbackHours = getLookbackHours() } = {}) {
     return [
@@ -151,9 +159,15 @@ let sending = false;
  * @param {object} [opts]
  * @param {string} [opts.trigger] "cron" | "manual" | "preview" — for the logs
  * @param {boolean} [opts.dryRun] build the messages, send and stamp nothing
+ * @param {number} [opts.count] jobs to send, 1–DIGEST_SIZE (the default)
  * @param {Date} [opts.now]
  */
-async function runSocialDigest({ trigger = "manual", dryRun = false, now = new Date() } = {}) {
+async function runSocialDigest({
+    trigger = "manual",
+    dryRun = false,
+    count = DIGEST_SIZE,
+    now = new Date(),
+} = {}) {
     if (!dryRun && sending) {
         return { sent: false, dryRun, reason: "already-running", jobs: [], messages: [] };
     }
@@ -161,7 +175,7 @@ async function runSocialDigest({ trigger = "manual", dryRun = false, now = new D
 
     try {
         const lookbackHours = getLookbackHours();
-        const picked = await selectDigestJobs({ now, lookbackHours });
+        const picked = await selectDigestJobs({ now, lookbackHours, count });
         const jobs = picked.map(summarizeJob);
         const base = { dryRun, lookbackHours, jobs };
 

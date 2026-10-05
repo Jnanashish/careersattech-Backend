@@ -201,10 +201,13 @@ archived ones included)
 - `POST /stop/:adapterName` — request adapter stop (cooperative)
 
 ### Social digest admin — `/api/admin/social-digest` (`requireAuth`)
-- `GET /preview` — what the digest would send right now: `{ data: { jobs,
-  messages, reason, lookbackHours } }`. Sends and stamps nothing.
+- `GET /preview?count=` — what the digest would send right now: `{ data: {
+  jobs, messages, reason, lookbackHours } }`. Sends and stamps nothing.
 - `POST /send` — send it to Telegram now; same selection and messages as the
-  16:00 cron. Body must be `{}` (strict — no dry-run flag here, use `/preview`).
+  16:00 cron. Body `{ count? }` — jobs to send, 1–6, default 6 like the cron
+  (6 is the most the message-length budget allows). Strict: any other key is
+  a 400 — there is no dry-run flag here, use `/preview`. The admin Daily
+  Digest page's one-click "Send top 5 to Telegram" posts `{ count: 5 }`.
   200 `{ data: { sent: true, jobs, sentAt } }`, or 200 with `sent: false,
   reason: "no-eligible-jobs"`; 409 while another send is in flight; 502 when
   Telegram refuses a message (nothing is stamped, so the jobs stay eligible).

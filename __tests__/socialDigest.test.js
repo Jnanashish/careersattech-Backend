@@ -139,6 +139,11 @@ describe("selectDigestJobs", () => {
         expect(slugsOf(await selectDigestJobs({ now: NOW }))).toEqual(RANKED_SIX);
     });
 
+    it("caps the pick at `count` when one is given", async () => {
+        await seedSevenEligible();
+        expect(slugsOf(await selectDigestJobs({ now: NOW, count: 5 }))).toEqual(RANKED_SIX.slice(0, 5));
+    });
+
     it("skips jobs that fail best-to-post or are not live, fresh and unsent", async () => {
         const google = await makeCompany("Google");
         const noLogo = await makeCompany("NoLogo", { logo: {} });
@@ -333,6 +338,43 @@ describe("admin routes", () => {
         expect(res.body.data.sent).toBe(true);
         expect(send).toHaveBeenCalledTimes(3);
         expect(await sentSlugs()).toEqual([...RANKED_SIX].sort());
+    });
+
+    it("sends and stamps only the top `count` jobs when one is given", async () => {
+        await seedSevenEligible(new Date());
+
+        const res = await request(app)
+            .post("/api/admin/social-digest/send")
+            .set(auth)
+            .send({ count: 5 })
+            .expect(200);
+
+        expect(slugsOf(res.body.data.jobs)).toEqual(RANKED_SIX.slice(0, 5));
+        expect(send).toHaveBeenCalledTimes(3);
+        expect(await sentSlugs()).toEqual(RANKED_SIX.slice(0, 5).sort());
+    });
+
+    it("previews the top `count` jobs when one is given", async () => {
+        await seedSevenEligible(new Date());
+
+        const res = await request(app)
+            .get("/api/admin/social-digest/preview?count=5")
+            .set(auth)
+            .expect(200);
+
+        expect(slugsOf(res.body.data.jobs)).toEqual(RANKED_SIX.slice(0, 5));
+    });
+
+    it("rejects a count outside 1–6", async () => {
+        for (const count of [0, 7, 2.5, "5"]) {
+            await request(app)
+                .post("/api/admin/social-digest/send")
+                .set(auth)
+                .send({ count })
+                .expect(400);
+        }
+        await request(app).get("/api/admin/social-digest/preview?count=7").set(auth).expect(400);
+        expect(send).not.toHaveBeenCalled();
     });
 
     it("answers 200 with sent:false when nothing qualifies", async () => {
