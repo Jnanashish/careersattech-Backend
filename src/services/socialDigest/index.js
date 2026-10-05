@@ -1,15 +1,16 @@
 const JobV2 = require("../../modules/jobsV2/jobsV2.model");
 const CompanyV2 = require("../../modules/companiesV2/companiesV2.model");
 const logger = require("../../utils/logger");
-const { send, esc } = require("../../utils/telegram");
+const { send, sendDocuments, esc, notifyGeneralError } = require("../../utils/telegram");
 const { isBestToPost } = require("./bestToPost");
 const { buildCaption } = require("./captions/captionBuilder");
 const { buildWhatsAppMessage } = require("./captions/whatsapp");
+const { renderBanners } = require("./banner");
 
-// Daily social digest: the top best-to-post jobs, plus a ready-to-paste
-// Instagram caption and WhatsApp message, posted to the socialDigest Telegram
-// channel. Every job sent is stamped with socialDigestSentAt so it is never
-// sent twice.
+// Daily social digest: the top best-to-post jobs with their banners, plus a
+// ready-to-paste Instagram caption and WhatsApp message, posted to the
+// socialDigest Telegram channel. Every job sent is stamped with
+// socialDigestSentAt so it is never sent twice.
 
 // How many jobs the cron sends, and the most any send may take: the message
 // length budget below is sized for six.
@@ -94,38 +95,47 @@ function formatDigestDate(now) {
     }).format(now);
 }
 
-function buildJobsListMessage(jobs, { now, lookbackHours }) {
+function buildJobsListMessage(jobs, { now, lookbackHours, missingBanners }) {
     const noun = jobs.length === 1 ? "job" : "jobs";
     const lines = [
         `📣 <b>Top ${jobs.length} ${noun} to post — ${esc(formatDigestDate(now))}</b>`,
-        `Best-to-post picks from the last ${lookbackHours}h. The Instagram caption ` +
-            `and WhatsApp message follow — long-press either one to copy it.`,
+        `Best-to-post picks from the last ${lookbackHours}h. Their banners, the ` +
+            `Instagram caption and the WhatsApp message follow — long-press a caption to copy it.`,
     ];
     jobs.forEach((job, i) => {
         const batch = Array.isArray(job.batch) && job.batch.length
             ? `\nBatch ${esc(job.batch.join(", "))}`
             : "";
+        const noBanner = missingBanners.has(String(job._id))
+            ? "\n⚠️ Banner failed — make it with the job's Banner button in the admin jobs list"
+            : "";
         lines.push(
             "",
-            `${i + 1}. <b>${esc(job.companyName)}</b> — ${esc(job.title)}${batch}\n${esc(jobUrl(job))}`
+            `${i + 1}. <b>${esc(job.companyName)}</b> — ${esc(job.title)}${batch}\n${esc(jobUrl(job))}${noBanner}`
         );
     });
     return lines.join("\n");
 }
 
 /**
- * Three messages, in posting order: the job list, the Instagram caption, the
- * WhatsApp message. The two captions go out alone and unformatted (escaped
- * only because utils/telegram sends with parse_mode HTML), so a long-press →
- * Copy yields exactly the text to paste.
+ * The three text messages: the job list, the Instagram caption, the WhatsApp
+ * message. The two captions go out alone and unformatted (escaped only because
+ * utils/telegram sends with parse_mode HTML), so a long-press → Copy yields
+ * exactly the text to paste.
  *
  * At most DIGEST_SIZE (six) jobs keep each message far below the 3900-character
  * cap utils/telegram truncates at — and a truncated caption would be pasted
  * with the cut in it.
+ *
+ * `missingBanners` holds the ids of jobs whose banner failed to render; the
+ * list flags them so they can be made by hand.
  */
-function buildDigestMessages(jobs, { now = new Date(), lookbackHours = getLookbackHours() } = {}) {
+function buildDigestMessages(
+    jobs,
+    { now = new Date(), lookbackHours = getLookbackHours(), missingBanners = new Set() } = {}
+) {
     return [
-        buildJobsListMessage(jobs, { now, lookbackHours }),
+        buildJobsListMessage(jobs, { now, lookbackHours, missingBanners }),
         esc(buildCaption({ jobs })),
         esc(buildWhatsAppMessage(jobs, { siteUrl: SITE_URL })),
     ];
@@ -147,14 +157,20 @@ const summarizeJob = (job) => ({
 let sending = false;
 
 /**
- * Pick, build, send, stamp.
+ * Pick, render banners, send, stamp.
  *
- * Jobs are stamped only after all three messages are accepted. If Telegram
- * refuses one, nothing is stamped and the same jobs go out on the next run —
- * a repeated message beats a digest that silently never arrived.
+ * Posting order: the job list, the banners as one album of files, then each
+ * caption alone, so a caption sits right under the images it goes with.
+ *
+ * Jobs are stamped only after every post is accepted. If Telegram refuses one,
+ * nothing is stamped and the same jobs go out on the next run — a repeated
+ * message beats a digest that silently never arrived. A banner that fails to
+ * render does not hold the digest back: the list flags it, the rest go out,
+ * and the general channel hears about it.
  *
  * Never throws for an expected outcome; `reason` says why nothing was sent:
  *   "no-eligible-jobs" | "telegram-failed" | "already-running" | null (sent / dry run)
+ * A dry run renders no banners.
  *
  * @param {object} [opts]
  * @param {string} [opts.trigger] "cron" | "manual" | "preview" — for the logs
@@ -186,19 +202,39 @@ async function runSocialDigest({
             return { ...base, sent: false, reason: "no-eligible-jobs", messages: [] };
         }
 
-        const messages = buildDigestMessages(picked, { now, lookbackHours });
+        if (dryRun) {
+            const messages = buildDigestMessages(picked, { now, lookbackHours });
+            return { ...base, sent: false, reason: null, messages };
+        }
 
-        if (dryRun) return { ...base, sent: false, reason: null, messages };
+        // renderBanners never throws; a failed banner comes back with file: null.
+        const rendered = await renderBanners(picked);
+        const files = rendered.filter((r) => r.file).map((r) => r.file);
+        const failed = rendered.filter((r) => !r.file);
+        const banners = { sent: files.length, failed: failed.length };
 
-        for (const text of messages) {
-            // send() never throws; false means Telegram refused the message and
-            // utils/telegram has logged its reason.
-            if (!(await send(text, "socialDigest"))) {
+        const [list, caption, whatsapp] = buildDigestMessages(picked, {
+            now,
+            lookbackHours,
+            missingBanners: new Set(failed.map((r) => String(r.job._id))),
+        });
+        const messages = [list, caption, whatsapp];
+
+        // send() and sendDocuments() never throw; false means Telegram refused
+        // the post and utils/telegram has logged its reason.
+        const posts = [
+            () => send(list, "socialDigest"),
+            ...(files.length ? [() => sendDocuments(files, "socialDigest")] : []),
+            () => send(caption, "socialDigest"),
+            () => send(whatsapp, "socialDigest"),
+        ];
+        for (const post of posts) {
+            if (!(await post())) {
                 logger.error(
-                    `[digest] trigger=${trigger} Telegram refused a digest message — ` +
+                    `[digest] trigger=${trigger} Telegram refused a digest post — ` +
                         `${picked.length} job(s) left unsent for the next run`
                 );
-                return { ...base, sent: false, reason: "telegram-failed", messages };
+                return { ...base, sent: false, reason: "telegram-failed", messages, banners };
             }
         }
 
@@ -207,10 +243,20 @@ async function runSocialDigest({
             { $set: { socialDigestSentAt: now } }
         );
 
+        if (failed.length) {
+            // The digest went out and the missing banners can be made by hand,
+            // but a renderer that broke must not stay quiet.
+            await notifyGeneralError(
+                `socialDigest banners (${failed.length} of ${picked.length} failed)`,
+                failed[0].error
+            );
+        }
+
         logger.info(
-            `[digest] trigger=${trigger} sent ${picked.length} job(s): ${picked.map((j) => j.slug).join(", ")}`
+            `[digest] trigger=${trigger} sent ${picked.length} job(s), ${files.length} banner(s): ` +
+                picked.map((j) => j.slug).join(", ")
         );
-        return { ...base, sent: true, reason: null, messages, sentAt: now };
+        return { ...base, sent: true, reason: null, messages, banners, sentAt: now };
     } finally {
         if (!dryRun) sending = false;
     }

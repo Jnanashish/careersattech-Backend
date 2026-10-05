@@ -1,8 +1,9 @@
 require("./setup");
 
 // config loads .env, which may carry the real bot token, so the transport is
-// mocked twice over: `send` itself, and axios underneath it in case a code path
-// ever reaches the real one. No test in this file may post to Telegram.
+// mocked twice over: `send`/`sendDocuments` themselves, and axios underneath
+// them in case a code path ever reaches the real one. No test in this file may
+// post to Telegram.
 jest.mock("axios", () => ({
     post: jest.fn().mockRejectedValue(new Error("network disabled in tests")),
     get: jest.fn().mockRejectedValue(new Error("network disabled in tests")),
@@ -10,7 +11,12 @@ jest.mock("axios", () => ({
 jest.mock("../src/utils/telegram", () => ({
     ...jest.requireActual("../src/utils/telegram"),
     send: jest.fn(),
+    sendDocuments: jest.fn(),
     notifyGeneralError: jest.fn(),
+}));
+// Real banner renders are covered in socialDigestBanner.test.js.
+jest.mock("../src/services/socialDigest/banner", () => ({
+    renderBanners: jest.fn(),
 }));
 jest.mock("node-cron", () => ({
     ...jest.requireActual("node-cron"),
@@ -23,7 +29,8 @@ const cron = require("node-cron");
 
 const JobV2 = require("../src/modules/jobsV2/jobsV2.model");
 const CompanyV2 = require("../src/modules/companiesV2/companiesV2.model");
-const { send, notifyGeneralError, MAX_MESSAGE_LEN } = require("../src/utils/telegram");
+const { send, sendDocuments, notifyGeneralError, MAX_MESSAGE_LEN } = require("../src/utils/telegram");
+const { renderBanners } = require("../src/services/socialDigest/banner");
 const {
     runSocialDigest,
     selectDigestJobs,
@@ -97,9 +104,29 @@ async function seedSevenEligible(base = NOW) {
 // The order seedSevenEligible's jobs rank in; the last one misses the cut.
 const RANKED_SIX = ["google-new", "microsoft-mid", "google-old", "swiggy", "postman", "accenture-new"];
 
+const bannerFile = (job) => ({
+    filename: `${job.slug}.jpg`,
+    buffer: Buffer.from(`banner ${job.slug}`),
+    contentType: "image/jpeg",
+});
+
+// Every post in the order it was made: ["text", body] or ["files", filenames].
+let posted;
+
 beforeEach(() => {
+    posted = [];
     send.mockReset();
-    send.mockResolvedValue(true);
+    send.mockImplementation(async (text) => {
+        posted.push(["text", text]);
+        return true;
+    });
+    sendDocuments.mockReset();
+    sendDocuments.mockImplementation(async (files) => {
+        posted.push(["files", files.map((f) => f.filename)]);
+        return true;
+    });
+    renderBanners.mockReset();
+    renderBanners.mockImplementation(async (jobs) => jobs.map((job) => ({ job, file: bannerFile(job) })));
     notifyGeneralError.mockReset();
     cron.schedule.mockReset();
 });
@@ -183,7 +210,7 @@ describe("selectDigestJobs", () => {
 });
 
 describe("runSocialDigest", () => {
-    it("posts three messages in order and stamps exactly the jobs it sent", async () => {
+    it("posts the list, the banners as files, then both captions, and stamps exactly the jobs it sent", async () => {
         await seedSevenEligible();
 
         const res = await runSocialDigest({ trigger: "cron", now: NOW });
@@ -191,18 +218,62 @@ describe("runSocialDigest", () => {
         expect(res.sent).toBe(true);
         expect(res.reason).toBeNull();
         expect(slugsOf(res.jobs)).toEqual(RANKED_SIX);
+        expect(res.banners).toEqual({ sent: 6, failed: 0 });
 
-        expect(send).toHaveBeenCalledTimes(3);
-        expect(send.mock.calls.map(([, channel]) => channel)).toEqual([
-            "socialDigest",
-            "socialDigest",
-            "socialDigest",
+        const [list, caption, whatsapp] = res.messages;
+        expect(posted).toEqual([
+            ["text", list],
+            ["files", RANKED_SIX.map((slug) => `${slug}.jpg`)],
+            ["text", caption],
+            ["text", whatsapp],
         ]);
-        expect(send.mock.calls.map(([text]) => text)).toEqual(res.messages);
+        expect(send.mock.calls.every(([, channel]) => channel === "socialDigest")).toBe(true);
+        expect(sendDocuments.mock.calls[0][1]).toBe("socialDigest");
+        expect(slugsOf(renderBanners.mock.calls[0][0])).toEqual(RANKED_SIX);
 
         expect(await sentSlugs()).toEqual([...RANKED_SIX].sort());
         const stamped = await JobV2.findOne({ slug: "google-new" }).lean();
         expect(stamped.socialDigestSentAt.toISOString()).toBe(NOW.toISOString());
+        expect(notifyGeneralError).not.toHaveBeenCalled();
+    });
+
+    it("still sends the digest when a banner fails, flags that job and alerts", async () => {
+        await seedSevenEligible();
+        const boom = new Error("satori could not lay out the title");
+        renderBanners.mockImplementation(async (jobs) =>
+            jobs.map((job) =>
+                job.slug === "swiggy" ? { job, file: null, error: boom } : { job, file: bannerFile(job) }
+            )
+        );
+
+        const res = await runSocialDigest({ trigger: "cron", now: NOW });
+
+        expect(res.sent).toBe(true);
+        expect(res.banners).toEqual({ sent: 5, failed: 1 });
+        expect(sendDocuments.mock.calls[0][0].map((f) => f.filename)).not.toContain("swiggy.jpg");
+
+        const list = res.messages[0];
+        const swiggyEntry = list.split("\n\n").find((entry) => entry.includes("<b>Swiggy</b>"));
+        expect(swiggyEntry).toContain("Banner failed");
+        expect(list.match(/Banner failed/g)).toHaveLength(1);
+
+        expect(await sentSlugs()).toEqual([...RANKED_SIX].sort());
+        expect(notifyGeneralError).toHaveBeenCalledTimes(1);
+        expect(notifyGeneralError.mock.calls[0][1]).toBe(boom);
+    });
+
+    it("sends the text alone when every banner fails", async () => {
+        await seedSevenEligible();
+        renderBanners.mockImplementation(async (jobs) =>
+            jobs.map((job) => ({ job, file: null, error: new Error("no fonts") }))
+        );
+
+        const res = await runSocialDigest({ trigger: "cron", now: NOW });
+
+        expect(res.sent).toBe(true);
+        expect(sendDocuments).not.toHaveBeenCalled();
+        expect(posted.map(([kind]) => kind)).toEqual(["text", "text", "text"]);
+        expect(await sentSlugs()).toEqual([...RANKED_SIX].sort());
     });
 
     it("never sends the same job twice", async () => {
@@ -214,14 +285,26 @@ describe("runSocialDigest", () => {
         expect(slugsOf(second.jobs)).toEqual(["accenture-old"]);
     });
 
-    it("stamps nothing and stops sending when Telegram refuses a message", async () => {
+    it("stamps nothing and posts no captions when Telegram refuses the banners", async () => {
         await seedSevenEligible();
-        send.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        sendDocuments.mockResolvedValue(false);
 
         const res = await runSocialDigest({ trigger: "cron", now: NOW });
 
         expect(res.sent).toBe(false);
         expect(res.reason).toBe("telegram-failed");
+        expect(send).toHaveBeenCalledTimes(1); // the list only
+        expect(await sentSlugs()).toEqual([]);
+    });
+
+    it("stamps nothing when Telegram refuses a caption after the banners went out", async () => {
+        await seedSevenEligible();
+        send.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+        const res = await runSocialDigest({ trigger: "cron", now: NOW });
+
+        expect(res.reason).toBe("telegram-failed");
+        expect(sendDocuments).toHaveBeenCalledTimes(1);
         expect(send).toHaveBeenCalledTimes(2);
         expect(await sentSlugs()).toEqual([]);
     });
@@ -246,6 +329,7 @@ describe("runSocialDigest", () => {
         expect(res.messages).toHaveLength(3);
         expect(slugsOf(res.jobs)).toEqual(RANKED_SIX);
         expect(send).not.toHaveBeenCalled();
+        expect(renderBanners).not.toHaveBeenCalled();
         expect(await sentSlugs()).toEqual([]);
     });
 });

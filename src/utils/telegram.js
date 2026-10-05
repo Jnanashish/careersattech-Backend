@@ -105,6 +105,60 @@ async function send(text, channel) {
     }
 }
 
+// sendMediaGroup takes 2–10 items; a single file goes through sendDocument.
+const MAX_ALBUM_SIZE = 10;
+// An album carries a few MB of images, far more than a text send.
+const UPLOAD_TIMEOUT_MS = 60000;
+
+/**
+ * Post files as documents: one album per ten files, or sendDocument for a lone
+ * one. Documents rather than photos, because Telegram re-encodes and shrinks a
+ * photo while a document arrives byte for byte.
+ *
+ * Same contract as send(): never throws; false when Telegram refused any part
+ * (its reason is logged) or the channel is not configured.
+ *
+ * @param {{ filename: string, buffer: Buffer, contentType?: string }[]} files
+ * @param {string} channel
+ */
+async function sendDocuments(files, channel) {
+    const chatId = resolveChat(channel);
+    if (!chatId) return false;
+
+    const blob = (file) =>
+        new Blob([file.buffer], { type: file.contentType || "application/octet-stream" });
+
+    for (let start = 0; start < files.length; start += MAX_ALBUM_SIZE) {
+        const batch = files.slice(start, start + MAX_ALBUM_SIZE);
+        const form = new FormData();
+        form.append("chat_id", chatId);
+
+        let method = "sendDocument";
+        if (batch.length === 1) {
+            form.append("document", blob(batch[0]), batch[0].filename);
+        } else {
+            method = "sendMediaGroup";
+            form.append(
+                "media",
+                JSON.stringify(batch.map((_, i) => ({ type: "document", media: `attach://file${i}` })))
+            );
+            batch.forEach((file, i) => form.append(`file${i}`, blob(file), file.filename));
+        }
+
+        try {
+            await axios.post(`https://api.telegram.org/bot${config.telegram.botToken}/${method}`, form, {
+                timeout: UPLOAD_TIMEOUT_MS,
+                maxBodyLength: Infinity,
+            });
+        } catch (err) {
+            const detail = err.response?.data?.description || err.message;
+            logger.error(`[Telegram] Failed to send ${batch.length} file(s) to "${channel}": ${detail}`);
+            return false;
+        }
+    }
+    return true;
+}
+
 // Drop throttle entries that have aged out, so a long-lived process with many
 // distinct error signatures doesn't grow the map without bound.
 function pruneThrottle(now) {
@@ -235,6 +289,7 @@ async function notifyJobCleanup(report = {}) {
 
 module.exports = {
     send,
+    sendDocuments,
     notifyGeneralError,
     notifyJobCleanup,
     esc,

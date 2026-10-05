@@ -208,9 +208,10 @@ archived ones included)
   (6 is the most the message-length budget allows). Strict: any other key is
   a 400 — there is no dry-run flag here, use `/preview`. The admin Daily
   Digest page's one-click "Send top 5 to Telegram" posts `{ count: 5 }`.
-  200 `{ data: { sent: true, jobs, sentAt } }`, or 200 with `sent: false,
-  reason: "no-eligible-jobs"`; 409 while another send is in flight; 502 when
-  Telegram refuses a message (nothing is stamped, so the jobs stay eligible).
+  200 `{ data: { sent: true, jobs, banners: { sent, failed }, sentAt } }`, or
+  200 with `sent: false, reason: "no-eligible-jobs"`; 409 while another send is
+  in flight; 502 when Telegram refuses a post (nothing is stamped, so the jobs
+  stay eligible).
 
 ### GET /api/admin/jobs/v2 query params
 `page`, `limit` (max 100), `status`, `search` (text index), `company` (ObjectId),
@@ -414,6 +415,15 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
   `Helpers/JobListHelper` caption builders, verbatim apart from ESM → CommonJS.
   The digest promises to send what the admin panel marks and captions the admin
   Daily Digest would build, so change both copies together.
+- **Digest banners are a redraw of the admin's.** `services/socialDigest/banner`
+  rebuilds `CareersAtTechBanner.jsx` + `canvas.module.scss` (in the "Join
+  instagram channel for apply link 👇" CTA layout) with satori → resvg → sharp,
+  using the admin repo's own Helvetica Neue / Helvetica Now Text files from
+  `banner/assets/fonts`, and copies the `jobCanvasAdapter` formatters. Output is
+  the 2160×2700 JPEG the Daily Digest page downloads. Layout or text changes go
+  in both repos. Logos are fetched server-side from untrusted company documents,
+  so only `https://res.cloudinary.com` (where every stored logo lives) is
+  allowed, with no redirects; anything else prints the company name instead.
 - Blog publish/update fires a Next.js ISR revalidation webhook when configured.
 - All v2 / blog / admin write routes validate with Zod before reaching the
   controller; validated payload is on `req.validated`.
@@ -523,11 +533,14 @@ All four initialize after the server starts listening:
   never posts or stamps. Picks up to 6 jobs that are published, live (no past
   `validThrough`), posted in the last `SOCIAL_DIGEST_LOOKBACK_HOURS` (default
   24), never sent (`socialDigestSentAt: null`) and best-to-post; ranks them
-  bigtech > unicorn > product > mnc, newest first within a type. Posts three
-  messages to the `socialDigest` Telegram channel — the job list, the Instagram
+  bigtech > unicorn > product > mnc, newest first within a type. Posts to the
+  `socialDigest` Telegram channel, in order: the job list, the banners as one
+  album of files (documents, so Telegram keeps them full size), the Instagram
   caption, the WhatsApp message (site links) — and stamps `socialDigestSentAt`
-  only after all three are accepted. Zero eligible jobs → nothing is posted.
-  A refused send leaves the jobs unstamped and alerts the `general` channel.
+  only after every post is accepted. Zero eligible jobs → nothing is posted.
+  A refused send leaves the jobs unstamped and alerts the `general` channel. A
+  banner that fails to render does not hold the digest back: the list flags the
+  job, the rest go out, and the `general` channel is alerted.
 
 ## Security Checklist (before every PR)
 - [ ] Input sanitized (regex via `escapeRegex`) and validated (Zod for v2/blog/admin)
