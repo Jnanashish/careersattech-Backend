@@ -131,12 +131,6 @@ beforeEach(() => {
     cron.schedule.mockReset();
 });
 
-afterEach(() => {
-    delete process.env.SOCIAL_DIGEST_ENABLED;
-    delete process.env.SOCIAL_DIGEST_CRON;
-    delete process.env.SOCIAL_DIGEST_LOOKBACK_HOURS;
-});
-
 describe("bestToPost — parity with the admin panel's three checks", () => {
     it("accepts only an experience range inside 0–4 years", () => {
         expect(isFresherExperience({ min: 0, max: 2 })).toBe(true);
@@ -198,14 +192,12 @@ describe("selectDigestJobs", () => {
         ]);
     });
 
-    it("widens the window with SOCIAL_DIGEST_LOOKBACK_HOURS", async () => {
+    it("widens the window when given a longer lookback", async () => {
         const google = await makeCompany("Google");
         await makeJob("thirty-hours-old", google, { datePosted: hoursAgo(30) });
 
         expect(await selectDigestJobs({ now: NOW })).toHaveLength(0);
-
-        process.env.SOCIAL_DIGEST_LOOKBACK_HOURS = "48";
-        expect(slugsOf(await selectDigestJobs({ now: NOW }))).toEqual(["thirty-hours-old"]);
+        expect(slugsOf(await selectDigestJobs({ now: NOW, lookbackHours: 48 }))).toEqual(["thirty-hours-old"]);
     });
 });
 
@@ -488,36 +480,19 @@ describe("admin routes", () => {
 });
 
 describe("socialDigest.scheduler", () => {
-    it("is not scheduled unless SOCIAL_DIGEST_ENABLED is exactly 'true'", () => {
-        scheduler.init();
-        process.env.SOCIAL_DIGEST_ENABLED = "1";
-        scheduler.init();
-
-        expect(cron.schedule).not.toHaveBeenCalled();
-    });
-
-    it("runs daily at 16:00 Asia/Kolkata by default", () => {
-        process.env.SOCIAL_DIGEST_ENABLED = "true";
+    it("is scheduled daily at 16:00 Asia/Kolkata with no env set", () => {
         scheduler.init();
 
         expect(cron.schedule).toHaveBeenCalledTimes(1);
         const [expr, , opts] = cron.schedule.mock.calls[0];
         expect(expr).toBe("0 16 * * *");
+        expect(cron.validate(expr)).toBe(true);
         expect(opts).toEqual({ timezone: "Asia/Kolkata" });
-    });
-
-    it("skips an invalid SOCIAL_DIGEST_CRON instead of throwing", () => {
-        process.env.SOCIAL_DIGEST_ENABLED = "true";
-        process.env.SOCIAL_DIGEST_CRON = "not a cron";
-
-        expect(() => scheduler.init()).not.toThrow();
-        expect(cron.schedule).not.toHaveBeenCalled();
     });
 
     it("alerts the general channel when Telegram refuses the cron's digest", async () => {
         await seedSevenEligible(new Date());
         send.mockResolvedValue(false);
-        process.env.SOCIAL_DIGEST_ENABLED = "true";
         scheduler.init();
 
         const [, tick] = cron.schedule.mock.calls[0];

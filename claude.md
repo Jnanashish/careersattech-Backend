@@ -330,9 +330,8 @@ results (`jobLinksFound`, `jobsFetched`, `jobsTransformed`, `jobsIngested`,
   Neither leaves a `deletedAt`, a restore path, or anything to review. Guard
   any change here: widening what counts as `expired` — the date filter or the
   verifier's verdict — widens what gets destroyed every night, unattended.
-  `VERIFY_JOBS_DRY_RUN=true`, or `node scripts/verifyJobs.js --expiry-only
-  --dry-run`, is the safe way to test a change against prod data.
-- **`EXPIRED_JOBS_GRACE_DAYS` (default 0) is the only brake on the date sweep.**
+  `node scripts/verifyJobs.js --expiry-only --dry-run` is the safe way to test a change against prod data.
+- **`EXPIRY_GRACE_DAYS` (hardcoded 0 in the scheduler) is the only brake on the date sweep.**
   At 0 a job is deleted on the first run after `validThrough` passes. Set to N
   and the cutoff moves back N days: `archiveExpiredJobs` flips the jobs inside
   the window to `archived` and `deleteExpiredJobs` takes them once they clear
@@ -484,19 +483,11 @@ NEXT_REVALIDATION_URL, REVALIDATE_SECRET
 SITE_URL, SITE_TITLE, SITE_DESCRIPTION   # used by RSS feed
 
 # Daily jobs cleanup (verifyJobs.scheduler)
-VERIFY_JOBS_ENABLED=true     # cron is NOT scheduled unless exactly "true"
-VERIFY_JOBS_CRON=0 0 * * *   # daily; the hard deletes run on this schedule
-VERIFY_JOBS_TZ=Asia/Kolkata
-VERIFY_JOBS_CONCURRENCY=5    # parallel apply-link fetches
-VERIFY_JOBS_DRY_RUN=false    # "true" = log what would be deleted, write nothing
-EXPIRED_JOBS_GRACE_DAYS=0    # days a date-expired job is kept before deletion
+# No env flags: schedule (0 0 * * * IST), concurrency and grace are hardcoded
 RESEND_API_KEY, VERIFY_EMAIL_FROM, VERIFY_EMAIL_TO   # verifier email summary
 
 # Daily social digest (socialDigest.scheduler)
-SOCIAL_DIGEST_ENABLED=true          # cron is NOT scheduled unless exactly "true"
-SOCIAL_DIGEST_CRON=0 16 * * *       # daily at 16:00
-SOCIAL_DIGEST_TZ=Asia/Kolkata
-SOCIAL_DIGEST_LOOKBACK_HOURS=24     # how far back datePosted may be
+# No env flags: schedule (0 16 * * * IST) and the 24h lookback are hardcoded
 
 NODE_ENV=production     # gates secure cookie flag
 ```
@@ -518,9 +509,7 @@ All four initialize after the server starts listening:
   `scheduled → published` when `scheduledFor <= now` and triggers Next.js
   revalidation.
 - `jobs/verifyJobs.scheduler.js` — daily jobs-directory cleanup, `0 0 * * *`
-  (`VERIFY_JOBS_CRON`) in `VERIFY_JOBS_TZ` (default Asia/Kolkata). Scheduled
-  only when `VERIFY_JOBS_ENABLED=true`; an invalid cron expression is logged
-  and skipped, not thrown. Three passes per run, in this order:
+  Asia/Kolkata, hardcoded and always scheduled — no env flag gates it. Three passes per run, in this order:
   `deleteExpiredJobs()` (hard-delete past `validThrough`) →
   `archiveExpiredJobs()` (grace-window archive, a no-op at the default grace
   of 0) → `runVerification({ deleteExpired: true })` (fetch every remaining
@@ -528,11 +517,10 @@ All four initialize after the server starts listening:
   A pass throwing never skips the Telegram `cleanup` report — the deleted
   counts are the only record of an irreversible operation.
 - `jobs/socialDigest.scheduler.js` — daily social digest, `0 16 * * *`
-  (`SOCIAL_DIGEST_CRON`) in `SOCIAL_DIGEST_TZ` (default Asia/Kolkata). Scheduled
-  only when `SOCIAL_DIGEST_ENABLED=true`, so a dev server on the shared database
-  never posts or stamps. Picks up to 6 jobs that are published, live (no past
-  `validThrough`), posted in the last `SOCIAL_DIGEST_LOOKBACK_HOURS` (default
-  24), never sent (`socialDigestSentAt: null`) and best-to-post; ranks them
+  Asia/Kolkata, hardcoded and always scheduled — no env flag gates it, so a dev
+  server left running on the shared database posts and stamps too. Picks up to
+  6 jobs that are published, live (no past `validThrough`), posted in the last
+  24h, never sent (`socialDigestSentAt: null`) and best-to-post; ranks them
   bigtech > unicorn > product > mnc, newest first within a type. Posts to the
   `socialDigest` Telegram channel, in order: the job list, the banners as one
   album of files (documents, so Telegram keeps them full size), the Instagram

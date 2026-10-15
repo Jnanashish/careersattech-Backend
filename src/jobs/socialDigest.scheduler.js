@@ -1,33 +1,24 @@
 const cron = require("node-cron");
 const logger = require("../utils/logger");
-const { runSocialDigest, getDigestTimezone } = require("../services/socialDigest");
+const { runSocialDigest, DIGEST_TIMEZONE } = require("../services/socialDigest");
 const { notifyGeneralError } = require("../utils/telegram");
 
-const DEFAULT_CRON = "0 16 * * *"; // once a day at 16:00 in SOCIAL_DIGEST_TZ
+// Hardcoded on purpose — no env flag gates or tunes this cron.
+const CRON_SCHEDULE = "0 16 * * *"; // once a day at 16:00 IST
 
 /**
  * Daily social digest — the top best-to-post jobs plus an Instagram caption and
  * a WhatsApp message, posted to the socialDigest Telegram channel.
  *
- * Opt-in like the cleanup cron: scheduled only when SOCIAL_DIGEST_ENABLED is
- * exactly "true", so a dev server running against the shared database never
- * posts to the channel or stamps jobs as sent.
+ * Always scheduled, like the cleanup cron. Every server process that is up at
+ * 16:00 posts, so a dev server left running against the shared database posts
+ * to the channel and stamps jobs as sent too.
  */
 function init() {
-    if (process.env.SOCIAL_DIGEST_ENABLED !== "true") {
-        logger.info("[digest] SOCIAL_DIGEST_ENABLED is not 'true' — cron NOT scheduled");
-        return;
-    }
-    const schedule = process.env.SOCIAL_DIGEST_CRON || DEFAULT_CRON;
-    if (!cron.validate(schedule)) {
-        logger.error(`[digest] invalid SOCIAL_DIGEST_CRON: "${schedule}" — cron NOT scheduled`);
-        return;
-    }
-    const timezone = getDigestTimezone();
-    logger.info(`[digest] scheduling cron "${schedule}" (tz=${timezone})`);
+    logger.info(`[digest] scheduling cron "${CRON_SCHEDULE}" (tz=${DIGEST_TIMEZONE})`);
 
     cron.schedule(
-        schedule,
+        CRON_SCHEDULE,
         async () => {
             try {
                 const result = await runSocialDigest({ trigger: "cron" });
@@ -47,8 +38,8 @@ function init() {
                 await notifyGeneralError("socialDigest cron", err);
             }
         },
-        { timezone }
+        { timezone: DIGEST_TIMEZONE }
     );
 }
 
-module.exports = { init, DEFAULT_CRON };
+module.exports = { init, CRON_SCHEDULE };

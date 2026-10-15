@@ -65,7 +65,7 @@ function parseArgs(argv) {
                     "                  daily cron does) before checking apply links.",
                     "  --expiry-only   Run that date sweep and nothing else.",
                     "  --grace-days=N  Keep a date-expired job N days before deleting it",
-                    "                  (default: EXPIRED_JOBS_GRACE_DAYS, or 0).",
+                    "                  (default: 0).",
                 ].join("\n")
             );
             process.exit(0);

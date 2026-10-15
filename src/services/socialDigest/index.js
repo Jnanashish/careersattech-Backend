@@ -15,7 +15,11 @@ const { renderBanners } = require("./banner");
 // How many jobs the cron sends, and the most any send may take: the message
 // length budget below is sized for six.
 const DIGEST_SIZE = 6;
-const DEFAULT_LOOKBACK_HOURS = 24;
+// Hardcoded on purpose, like the cron schedule — no env flag tunes these. The
+// window matches the daily cadence; the timezone is the cron's and the one
+// the list header's date is written in.
+const LOOKBACK_HOURS = 24;
+const DIGEST_TIMEZONE = "Asia/Kolkata";
 const HOUR_MS = 60 * 60 * 1000;
 
 // The lookback window already bounds the pool; the cap only stops a
@@ -31,15 +35,6 @@ const SITE_URL = "https://careersat.tech";
 // type first, newest first within a type. Every type isKnownCompany accepts has
 // a rank here.
 const COMPANY_TYPE_RANK = { bigtech: 0, unicorn: 1, product: 2, mnc: 3 };
-
-function getLookbackHours() {
-    const n = Number(process.env.SOCIAL_DIGEST_LOOKBACK_HOURS);
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_LOOKBACK_HOURS;
-}
-
-function getDigestTimezone() {
-    return process.env.SOCIAL_DIGEST_TZ || "Asia/Kolkata";
-}
 
 const jobUrl = (job) => `${SITE_URL}/jobs/${job.slug}`;
 
@@ -65,7 +60,7 @@ function compareCandidates(a, b) {
  */
 async function selectDigestJobs({
     now = new Date(),
-    lookbackHours = getLookbackHours(),
+    lookbackHours = LOOKBACK_HOURS,
     count = DIGEST_SIZE,
 } = {}) {
     const since = new Date(now.getTime() - lookbackHours * HOUR_MS);
@@ -88,7 +83,7 @@ async function selectDigestJobs({
 
 function formatDigestDate(now) {
     return new Intl.DateTimeFormat("en-IN", {
-        timeZone: getDigestTimezone(),
+        timeZone: DIGEST_TIMEZONE,
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -132,7 +127,7 @@ function buildJobsListMessage(jobs, { now, lookbackHours, missingBanners }) {
  */
 function buildDigestMessages(
     jobs,
-    { now = new Date(), lookbackHours = getLookbackHours(), missingBanners = new Set() } = {}
+    { now = new Date(), lookbackHours = LOOKBACK_HOURS, missingBanners = new Set() } = {}
 ) {
     return [
         buildJobsListMessage(jobs, { now, lookbackHours, missingBanners }),
@@ -190,7 +185,7 @@ async function runSocialDigest({
     if (!dryRun) sending = true;
 
     try {
-        const lookbackHours = getLookbackHours();
+        const lookbackHours = LOOKBACK_HOURS;
         const picked = await selectDigestJobs({ now, lookbackHours, count });
         const jobs = picked.map(summarizeJob);
         const base = { dryRun, lookbackHours, jobs };
@@ -266,7 +261,7 @@ module.exports = {
     runSocialDigest,
     selectDigestJobs,
     buildDigestMessages,
-    getDigestTimezone,
+    DIGEST_TIMEZONE,
     DIGEST_SIZE,
     SITE_URL,
 };

@@ -31,7 +31,6 @@ async function makeJob(slug, extra = {}) {
 
 afterEach(() => {
     companyId = null;
-    delete process.env.EXPIRED_JOBS_GRACE_DAYS;
 });
 
 const idsOf = async () => (await JobV2.find({}).select("slug").lean()).map((j) => j.slug).sort();
@@ -173,27 +172,6 @@ describe("deleteExpiredJobs — daily validThrough hard delete", () => {
             expect(res.graceDays).toBe(7);
             expect(res.deleted).toBe(1);
             expect(await idsOf()).toEqual(["just-expired"]);
-        });
-
-        it("reads EXPIRED_JOBS_GRACE_DAYS when no override is passed", async () => {
-            process.env.EXPIRED_JOBS_GRACE_DAYS = "7";
-            await makeJob("just-expired", { validThrough: daysAgo(3) });
-
-            const res = await deleteExpiredJobs();
-
-            expect(res.graceDays).toBe(7);
-            expect(res.deleted).toBe(0);
-            expect(await JobV2.countDocuments({})).toBe(1);
-        });
-
-        it("ignores a junk or negative grace value and deletes immediately", async () => {
-            process.env.EXPIRED_JOBS_GRACE_DAYS = "-5";
-            await makeJob("expired", { validThrough: daysAgo(1) });
-
-            const res = await deleteExpiredJobs();
-
-            expect(res.graceDays).toBe(0);
-            expect(res.deleted).toBe(1);
         });
     });
 });

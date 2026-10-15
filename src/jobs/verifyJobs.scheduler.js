@@ -6,8 +6,14 @@ const { verifyJob } = require("../services/jobVerifier");
 const emailReporter = require("../services/jobVerifier/emailReporter");
 const { notifyJobCleanup } = require("../utils/telegram");
 
-const DEFAULT_CRON = "0 0 * * *"; // once a day at 00:00 in VERIFY_JOBS_TZ
-const DEFAULT_CONCURRENCY = 5;
+// Hardcoded on purpose — no env flag gates or tunes this cron.
+const CRON_SCHEDULE = "0 0 * * *"; // once a day at 00:00 IST
+const CRON_TIMEZONE = "Asia/Kolkata";
+const CONCURRENCY = 5;
+// Days a date-expired job is kept before the hard delete. 0 deletes it on the
+// first daily run after `validThrough` passes; a positive value leaves it
+// archived for that long first (archive-now / delete-later).
+const EXPIRY_GRACE_DAYS = 0;
 const PER_DOMAIN_GAP_MS = 2_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -16,26 +22,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // through the admin panel carries a different reason (and a deletedAt), so the
 // automated delete never picks it up.
 const AUTO_EXPIRED_REASON = "auto-expired-validThrough";
-
-function getConcurrency() {
-    const n = Number(process.env.VERIFY_JOBS_CONCURRENCY);
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_CONCURRENCY;
-}
-
-function isDryRun() {
-    return process.env.VERIFY_JOBS_DRY_RUN === "true";
-}
-
-/**
- * Days a date-expired job is kept before the hard delete. 0 — the default —
- * deletes it on the first daily run after `validThrough` passes. A positive
- * value leaves it archived for that long first, so a mistyped date can still
- * be spotted and restored before the document is gone.
- */
-function getExpiryGraceDays() {
-    const n = Number(process.env.EXPIRED_JOBS_GRACE_DAYS);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-}
 
 let pLimitLib;
 function loadPLimit() {
@@ -154,7 +140,7 @@ function buildJobUpdate(job, result, now) {
  */
 async function runVerification(opts = {}) {
     const startedAt = new Date();
-    const dryRun = opts.dryRun ?? isDryRun();
+    const dryRun = opts.dryRun ?? false;
     const skipEmail = !!opts.skipEmail;
     const deleteExpired = !!opts.deleteExpired;
     const trigger = opts.trigger || "manual";
@@ -180,7 +166,7 @@ async function runVerification(opts = {}) {
     const jobs = await cursor.lean();
 
     const pLimit = loadPLimit();
-    const limiter = pLimit(getConcurrency());
+    const limiter = pLimit(CONCURRENCY);
     const throttle = makeDomainThrottle();
 
     const archivedJobs = [];
@@ -316,14 +302,14 @@ async function runVerification(opts = {}) {
  * Ordering note: `deleteExpiredJobs` runs FIRST in the cron, so all that is
  * left for this pass is whatever expired too recently to be past the grace
  * cutoff. With the default grace of 0 that set is empty and this matches
- * nothing — it only does real work once EXPIRED_JOBS_GRACE_DAYS is set.
+ * nothing — it only does real work once EXPIRY_GRACE_DAYS is raised.
  *
  * @param {object} [opts]
  * @param {boolean} [opts.dryRun]
  * @returns {Promise<{ archived: number, matched: number, dryRun: boolean, checkedAt: Date }>}
  */
 async function archiveExpiredJobs(opts = {}) {
-    const dryRun = opts.dryRun ?? isDryRun();
+    const dryRun = opts.dryRun ?? false;
     const now = new Date();
 
     const filter = {
@@ -368,17 +354,17 @@ async function archiveExpiredJobs(opts = {}) {
  * admin-archived jobs and soft-deleted jobs are left alone: a stale date on a
  * draft nobody published is not a live posting that expired.
  *
- * `EXPIRED_JOBS_GRACE_DAYS` (default 0) moves the cutoff back that many days,
+ * `EXPIRY_GRACE_DAYS` (0) moves the cutoff back that many days,
  * turning this plus `archiveExpiredJobs` into archive-now / delete-later.
  *
  * @param {object} [opts]
  * @param {boolean} [opts.dryRun] list and log what matches, write nothing
- * @param {number} [opts.graceDays] override EXPIRED_JOBS_GRACE_DAYS
+ * @param {number} [opts.graceDays] override EXPIRY_GRACE_DAYS
  * @returns {Promise<{deleted:number,matched:number,clickEventsDeleted:number,dryRun:boolean,cutoff:Date,graceDays:number,jobs:Array<object>}>}
  */
 async function deleteExpiredJobs(opts = {}) {
-    const dryRun = opts.dryRun ?? isDryRun();
-    const graceDays = opts.graceDays ?? getExpiryGraceDays();
+    const dryRun = opts.dryRun ?? false;
+    const graceDays = opts.graceDays ?? EXPIRY_GRACE_DAYS;
     const now = new Date();
     const cutoff = graceDays > 0 ? new Date(now.getTime() - graceDays * DAY_MS) : now;
 
@@ -443,20 +429,10 @@ async function deleteExpiredJobs(opts = {}) {
 }
 
 function init() {
-    if (process.env.VERIFY_JOBS_ENABLED !== "true") {
-        logger.info("[verify] VERIFY_JOBS_ENABLED is not 'true' — cron NOT scheduled");
-        return;
-    }
-    const schedule = process.env.VERIFY_JOBS_CRON || DEFAULT_CRON;
-    if (!cron.validate(schedule)) {
-        logger.error(`[verify] invalid VERIFY_JOBS_CRON: "${schedule}" — cron NOT scheduled`);
-        return;
-    }
-    const timezone = process.env.VERIFY_JOBS_TZ || "Asia/Kolkata";
-    logger.info(`[verify] scheduling cron "${schedule}" (tz=${timezone})`);
+    logger.info(`[verify] scheduling cron "${CRON_SCHEDULE}" (tz=${CRON_TIMEZONE})`);
 
     cron.schedule(
-        schedule,
+        CRON_SCHEDULE,
         async () => {
             const cronStartedAt = Date.now();
 
@@ -464,7 +440,7 @@ function init() {
             //
             //   1. deleteExpiredJobs — pure date sweep, and IRREVERSIBLE. A job
             //      whose stated validThrough has passed (by more than
-            //      EXPIRED_JOBS_GRACE_DAYS) is removed from Mongo along with
+            //      EXPIRY_GRACE_DAYS) is removed from Mongo along with
             //      its click events. Covers jobs still sitting at "published"
             //      and ones an earlier run archived as auto-expired.
             //   2. archiveExpiredJobs — the grace-window pass. Jobs that
@@ -517,13 +493,13 @@ function init() {
                 clickEventsDeleted: (summary?.clickEventsDeleted ?? 0) + expiredClickEvents,
                 totalChecked: summary?.totalChecked ?? 0,
                 durationMs: Date.now() - cronStartedAt,
-                dryRun: summary?.dryRun ?? isDryRun(),
+                dryRun: summary?.dryRun ?? false,
                 deletedJobs: [...expiredJobs, ...(summary?.deletedJobs ?? [])],
                 expiryArchived,
                 error: failure,
             });
         },
-        { timezone }
+        { timezone: CRON_TIMEZONE }
     );
 }
 
@@ -536,7 +512,7 @@ module.exports = {
         buildJobUpdate,
         hostnameOf,
         makeDomainThrottle,
-        getExpiryGraceDays,
+        EXPIRY_GRACE_DAYS,
         PER_DOMAIN_GAP_MS,
         AUTO_EXPIRED_REASON,
     },

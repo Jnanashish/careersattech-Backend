@@ -12,8 +12,8 @@ The server registers four background cron schedulers on startup
 |---|---|---|---|
 | Scraper | `30 12 * * *` (6 PM IST daily) | Runs AI scrape adapters, ingests into `StagingJob`. | `src/jobs/scraper.scheduler.js` |
 | Blog publisher | `* * * * *` (every minute) | Flips `scheduled → published` when `scheduledFor ≤ now`; fires Next.js revalidation. | `src/jobs/blog.scheduler.js` |
-| **Job apply-URL verifier** | `VERIFY_JOBS_CRON` (default `0 */12 * * *` — every 12 hours, 00:00 and 12:00 IST) | Archives jobs past `validThrough`, then fetches each published job's `applyLink` and **hard-deletes** the ones whose pages confirm the listing is closed. Emails the founder a summary and posts the deleted count to the "Cleanup — Jobs Directory" Telegram channel. | `src/jobs/verifyJobs.scheduler.js` |
-| Social digest | `SOCIAL_DIGEST_CRON` (default `0 16 * * *` — 4 PM IST daily); only when `SOCIAL_DIGEST_ENABLED=true` | Posts the top 6 best-to-post jobs from the last 24h to the social digest Telegram channel: their banners as files (drawn server-side, `src/services/socialDigest/banner`), plus a ready-to-paste Instagram caption and WhatsApp message. Stamps `socialDigestSentAt` so no job is sent twice. "Send top 5 to Telegram" on the admin Daily Digest page sends the top 5 on demand (`POST /api/admin/social-digest/send` with `{ count: 5 }`). | `src/jobs/socialDigest.scheduler.js` |
+| **Job apply-URL verifier** | `0 0 * * *` (00:00 IST daily, hardcoded — always on, no env flag) | Hard-deletes jobs past `validThrough`, then fetches each published job's `applyLink` and **hard-deletes** the ones whose pages confirm the listing is closed. Emails the founder a summary and posts the deleted count to the "Cleanup — Jobs Directory" Telegram channel. | `src/jobs/verifyJobs.scheduler.js` |
+| Social digest | `0 16 * * *` (4 PM IST daily, hardcoded — always on, no env flag) | Posts the top 6 best-to-post jobs from the last 24h to the social digest Telegram channel: their banners as files (drawn server-side, `src/services/socialDigest/banner`), plus a ready-to-paste Instagram caption and WhatsApp message. Stamps `socialDigestSentAt` so no job is sent twice. "Send top 5 to Telegram" on the admin Daily Digest page sends the top 5 on demand (`POST /api/admin/social-digest/send` with `{ count: 5 }`). | `src/jobs/socialDigest.scheduler.js` |
 
 ### Job apply-URL verifier
 
@@ -36,8 +36,7 @@ The server registers four background cron schedulers on startup
     fields. **Never archived and never deleted** — only a confirmed-dead link
     is acted on, so a flaky fetch never nukes a good job.
 - All updates are written as a single `bulkWrite` at the end of the run
-  (saves Atlas round-trips). Concurrency is capped at `VERIFY_JOBS_CONCURRENCY`
-  (default 5) and a 2-second per-hostname throttle is enforced.
+  (saves Atlas round-trips). Concurrency is capped at 5 (hardcoded) and a 2-second per-hostname throttle is enforced.
 - Sends an HTML + plain-text summary email via Resend regardless of how many
   jobs were processed (heartbeat semantics).
 
@@ -60,8 +59,8 @@ and exactly one caller opts in: the 12-hourly cron.
 
 Two guards stand between a bad classification and data loss: only the three
 definite signals above produce `expired` (a timeout or 5xx never can), and
-`VERIFY_JOBS_DRY_RUN=true` suppresses the delete along with every other write
-while still reporting what *would* have gone.
+`node scripts/verifyJobs.js --dry-run` suppresses the delete along with every
+other write while still reporting what *would* have gone.
 
 **Telegram** — every cron run posts one summary to the `cleanup` channel
 (`cleanupChatId` in `src/config/index.js`), headed "🧹 Cleanup — Jobs
@@ -73,12 +72,6 @@ them. It also fires when a pass throws, with the error appended.
 ### Environment variables
 
 ```
-# Toggle and schedule
-VERIFY_JOBS_ENABLED=true             # must be exactly "true" to wire the cron at boot
-VERIFY_JOBS_CRON=0 */12 * * *        # node-cron expression (every 12 hours)
-VERIFY_JOBS_CONCURRENCY=5            # max parallel HTTP fetches
-VERIFY_JOBS_DRY_RUN=false            # "true" → no DB writes; email subject prefixed [DRY RUN]
-
 # Email summary (Resend)
 RESEND_API_KEY=
 VERIFY_EMAIL_FROM=onboarding@resend.dev
