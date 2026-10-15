@@ -38,7 +38,9 @@ const {
     SITE_URL,
 } = require("../src/services/socialDigest");
 const { isBestToPost, isFresherExperience } = require("../src/services/socialDigest/bestToPost");
-const { stylize } = require("../src/services/socialDigest/captions/whatsapp");
+const { buildWhatsAppMessage } = require("../src/services/socialDigest/captions/whatsapp");
+const { buildCaption } = require("../src/services/socialDigest/captions/captionBuilder");
+const { pickFormat } = require("../src/services/socialDigest/captions/captionTemplates");
 const scheduler = require("../src/jobs/socialDigest.scheduler");
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -358,9 +360,67 @@ describe("buildDigestMessages", () => {
         expect(caption).toContain("Google — Software Engineer");
         expect(caption).not.toMatch(/<\/?b>/);
 
-        expect(whatsapp).toContain(stylize("Google — Software Engineer"));
-        expect(whatsapp).toContain(`Apply Here 👉 ${SITE_URL}/jobs/google-software-engineer`);
+        expect(whatsapp).toContain("*1. Google — Software Engineer*");
+        expect(whatsapp).toContain(`Apply: ${SITE_URL}/jobs/google-software-engineer`);
         expect(whatsapp).not.toMatch(/<\/?b>/);
+    });
+
+    it("rotates the Instagram caption format by IST weekday", () => {
+        const jobs = [
+            job({ batch: [2024, 2025, 2026], jobLocation: [{ city: "Bengaluru" }] }),
+            job({ slug: "acme", companyName: "Acme", batch: [2021, 2022], jobLocation: [{ city: "Pune" }] }),
+        ];
+        const on = (day) => new Date(Date.UTC(2026, 9, day, 6)); // 11 Oct 2026 is a Sunday
+        expect([11, 12, 13, 14, 15, 16, 17].map((d) => pickFormat(jobs, on(d)))).toEqual([
+            "list", "list", "alert", "spotlight", "city", "batch", "question",
+        ]);
+
+        // One city and one batch range → city/batch days fall back to the list.
+        const same = [job(), job({ slug: "acme", companyName: "Acme" })];
+        expect(pickFormat(same, on(15))).toBe("list");
+        expect(pickFormat(same, on(16))).toBe("list");
+        expect(buildCaption({ jobs: same, templateKey: "city", now: on(15) })).toBe(
+            buildCaption({ jobs: same, templateKey: "list", now: on(15) })
+        );
+    });
+
+    it("caps every caption format at 5 hashtags", () => {
+        const jobs = [job(), job({ slug: "acme", companyName: "Acme", batch: [2022], jobLocation: [{ city: "Pune" }] })];
+        for (const key of ["list", "alert", "spotlight", "city", "batch", "question"]) {
+            const last = buildCaption({ jobs, templateKey: key }).split("\n").pop();
+            expect(last.split(" ").filter((t) => t.startsWith("#")).length).toBeLessThanOrEqual(5);
+        }
+    });
+
+    it("formats the WhatsApp message with a header, sorted batches and a footer", () => {
+        const msg = buildWhatsAppMessage(
+            [
+                job({ batch: [2026, 2024, 2025], workMode: "remote" }),
+                job({ slug: "postman-se", companyName: "Postman", degree: [], jobLocation: [] }),
+            ],
+            { siteUrl: SITE_URL, now: NOW }
+        );
+        const [header, first, second, footer] = msg.split("\n\n");
+
+        expect(header).toBe(
+            "*Tech Jobs for Freshers — 4 Oct 2026*\n2 handpicked roles | Full list: careersat.tech/jobs"
+        );
+        expect(first).toBe(
+            [
+                "*1. Google — Software Engineer*",
+                "Location: Bengaluru / Remote",
+                "Batch: 2024, 2025, 2026",
+                "Degree: B.Tech",
+                `Apply: ${SITE_URL}/jobs/google-software-engineer`,
+            ].join("\n")
+        );
+        // No location → no Location line; no degree → "Any Graduate".
+        expect(second).not.toContain("Location:");
+        expect(second).toContain("Degree: Any Graduate");
+        expect(footer).toContain("More jobs daily: careersat.tech/jobs");
+        // Plain text: no emoji, no Unicode bold.
+        expect(msg).not.toMatch(/\p{Extended_Pictographic}/u);
+        expect(msg).not.toMatch(/[\u{1D400}-\u{1D7FF}]/u);
     });
 
     it("keeps a full digest of long titles well under Telegram's cap", () => {

@@ -298,24 +298,10 @@ const deriveInsights = (jobs = []) => {
     };
 };
 
-const pickTemplate = (insights) => {
-    if (!insights) return "alert";
-    if (insights.isInternship) return "internship";
-    if (insights.isSingleCompany && insights.count >= 2) return "spotlight";
-    if (insights.isTier1) return "tier1";
-    if (insights.isMixedRoles) return "curation";
-    return "alert";
-};
-
-const pickCodeword = (insights) =>
-    insights?.isInternship ? "INTERN" : "LINK";
-
 module.exports = {
     detectRole,
     detectTech,
     detectCity,
     companyKey,
     deriveInsights,
-    pickTemplate,
-    pickCodeword,
 };

@@ -72,7 +72,7 @@ async function selectDigestJobs({
         datePosted: { $gte: since },
         $or: [{ validThrough: null }, { validThrough: { $gt: now } }],
     })
-        .select("_id title slug companyName company batch degree experience jobLocation employmentType applyLink datePosted")
+        .select("_id title slug companyName company batch degree experience jobLocation workMode employmentType applyLink datePosted")
         .populate({ path: "company", model: CompanyV2, select: "companyName logo companyType" })
         .sort({ datePosted: -1 })
         .limit(CANDIDATE_CAP)
@@ -131,8 +131,8 @@ function buildDigestMessages(
 ) {
     return [
         buildJobsListMessage(jobs, { now, lookbackHours, missingBanners }),
-        esc(buildCaption({ jobs })),
-        esc(buildWhatsAppMessage(jobs, { siteUrl: SITE_URL })),
+        esc(buildCaption({ jobs, now })),
+        esc(buildWhatsAppMessage(jobs, { siteUrl: SITE_URL, now })),
     ];
 }
 

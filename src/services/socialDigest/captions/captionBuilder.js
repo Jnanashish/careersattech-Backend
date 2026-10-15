@@ -1,88 +1,43 @@
 // Ported from admin-panel/src/Helpers/JobListHelper/captionBuilder.js — ESM → CommonJS,
-// content otherwise verbatim. The admin Daily Digest builds the same caption
-// in the browser, so a change to one copy must be made to the other.
+// content otherwise verbatim. The admin panel builds the same caption in the
+// browser, so a change to one copy must be made to the other.
 
-const { hashtagBank } = require("./hashtagBank");
-const {
-    captionTemplates,
-    hashtagsByTemplate,
-    SAVE_CTAS,
-} = require("./captionTemplates");
-const { deriveInsights, pickTemplate } = require("./jobInsights");
+const { CAPTION_FORMATS, isFormatEligible, pickFormat } = require("./captionTemplates");
 
 // Instagram allows only 5 hashtags per post.
 const MAX_HASHTAGS = 5;
 
-// De-dupe + cap a whitespace-separated hashtag string to MAX_HASHTAGS.
-const capHashtags = (str) =>
-    Array.from(new Set(str.split(/\s+/).filter(Boolean)))
+// De-dupe + cap a list of hashtags to MAX_HASHTAGS.
+const capHashtags = (tags) =>
+    Array.from(new Set(tags.filter(Boolean)))
         .slice(0, MAX_HASHTAGS)
         .join(" ");
 
-const pickHashtagsString = (insights, templateKey) => {
-    const techTags = (hashtagBank.techStack[insights.role] ||
-        hashtagBank.techStack.generic).slice(0, 4);
-
-    const companyTagArr =
-        insights.companyKeys.length === 1
-            ? hashtagBank.company[insights.companyKeys[0]] || []
-            : [];
-    const companyTag = companyTagArr[0];
-
-    const locationTagArr =
-        insights.cityKeys.length === 1
-            ? hashtagBank.location[insights.cityKeys[0]] || []
-            : [];
-    const locationTag = locationTagArr[0];
-
-    const mapper =
-        hashtagsByTemplate[templateKey] || hashtagsByTemplate.default;
-    const tags = mapper({ techTags, companyTag, locationTag, insights });
-    return capHashtags(Array.from(new Set(tags)).join(" "));
-};
-
-const pickSaveCta = (insights) => {
-    const seed =
-        (insights.count + (insights.companies.charCodeAt(0) || 0)) %
-        SAVE_CTAS.length;
-    return SAVE_CTAS[seed];
-};
-
+/**
+ * Build an Instagram caption. With no `templateKey` (or one the jobs aren't
+ * eligible for) the format comes from the weekday rotation in pickFormat.
+ */
 const buildCaption = ({
     jobs = [],
     templateKey,
     customHashtags,
+    now = new Date(),
 } = {}) => {
     const list = Array.isArray(jobs) ? jobs : [];
     if (!list.length) return "";
 
-    const insights = deriveInsights(list);
-    const finalTemplateKey = templateKey || pickTemplate(insights);
-    const hashtags =
+    const key =
+        templateKey && isFormatEligible(templateKey, list)
+            ? templateKey
+            : pickFormat(list, now);
+    const { body, hashtags } = CAPTION_FORMATS[key].build(list);
+
+    const tags =
         typeof customHashtags === "string" && customHashtags.trim()
-            ? capHashtags(customHashtags.trim())
-            : pickHashtagsString(insights, finalTemplateKey);
+            ? capHashtags(customHashtags.trim().split(/\s+/))
+            : capHashtags(hashtags);
 
-    const baseTemplate =
-        captionTemplates[finalTemplateKey] || captionTemplates.alert;
-
-    const replacements = {
-        "{COUNT}": String(insights.count),
-        "{ROLE}": insights.role,
-        "{ROLE_CAP}": insights.roleCap,
-        "{TECH}": insights.tech,
-        "{COMPANIES}": insights.companies || "",
-        "{JOBS_LIST}": insights.jobsList || "",
-        "{SAVE_CTA}": pickSaveCta(insights),
-        "{HASHTAGS}": hashtags,
-    };
-
-    let out = baseTemplate;
-    for (const [token, value] of Object.entries(replacements)) {
-        out = out.split(token).join(value);
-    }
-
-    return out;
+    return tags ? `${body}\n\n${tags}` : body;
 };
 
 module.exports = {
